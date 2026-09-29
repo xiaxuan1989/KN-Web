@@ -30,17 +30,17 @@ export interface Parameters {
 }
 
 // Match NPGS: mass in solar masses, spin a* and charge Q* dimensionless.
-// Positions are in Rs; the later geometry port will use CONST_M = 0.5.
+// GPU positions are in Rs (CONST_M = 0.5); camera motion preserves native world ly.
 export const DEFAULT_PARAMETERS: Readonly<Parameters> = Object.freeze({
   observerMode: 0, manualVelocity: false, velocityX: 0, velocityY: 0, velocityZ: 0,
   frequencyShift: true, backShiftMax: 1.5, backgroundBrightness: 2,
   postProcessing: true, taa: true, timeRate: 1, bloom: true,
   exposure: 0, gamma: 2.2, bloomStrength: 0.08,
   background: 'sky',
-  massSolar: 4_000_000,
-  spin: 0.8,
-  charge: 0.4,
-  fovDegrees: 60,
+  massSolar: 14_900_000,
+  spin: 0.998,
+  charge: 0,
+  fovDegrees: 80,
   quality: 1,
   fitWindow: true, renderWidth: 1280, renderHeight: 960, prepass: true,
   debugView: 3,

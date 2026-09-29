@@ -182,6 +182,7 @@ export class Renderer {
 
   resetCamera(): void {
     this.input?.clear();
+    this.camera.setMass(this.parameters.massSolar);
     this.camera.reset();
     this.temporal.reset();
     this.trajectory = undefined;
@@ -211,11 +212,14 @@ export class Renderer {
         this.fpsElapsedMs += time - this.lastFrameTime;
         this.fpsFrames += 1;
       }
+      // Native update evolves the camera using the preceding measured interval.
+      const cameraDeltaTime = this.lastFrameTime === undefined ? 0 : this.realDeltaTime;
       this.realDeltaTime = this.lastFrameTime === undefined ? 0 : Math.max(0, (time - this.lastFrameTime) / 1000);
       this.deltaTime = Math.min(0.05,this.realDeltaTime);
       this.lastFrameTime = time;
       this.elapsedTime += this.deltaTime;
-      this.input?.update(this.deltaTime);
+      this.camera.setMass(this.parameters.massSolar);
+      this.input?.update(cameraDeltaTime);
       this.draw();
       if (time - this.lastStatsTime >= 500) this.reportStats(time);
       this.frameId = requestAnimationFrame(this.frame);
@@ -225,6 +229,7 @@ export class Renderer {
   };
 
   private draw(): void {
+    this.camera.setMass(this.parameters.massSolar);
     const device = this.device!;
     // NPGS follows window size; macOS disables Retina framebuffer scaling.
     // CSS pixels therefore drive the default output, without multiplying by DPR.

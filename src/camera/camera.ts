@@ -1,248 +1,199 @@
+import { radiusLightYears } from '../renderer/temporal.ts';
+import { DEFAULT_PARAMETERS } from '../physics/parameters.ts';
+
 export type Vec3 = [number, number, number];
 export type CameraMode = 'orbit' | 'free';
+export interface CameraBasis { position: Vec3; forward: Vec3; right: Vec3; up: Vec3 }
 
-// Application.cpp:727,3272 overrides Camera.cpp's constructor value 30 with
-// camsmth=1 every frame. Roll keeps Camera.cpp's separate 1/3 coefficient.
-const ROTATION_DAMPING = 1;
-const ROLL_DAMPING = 1 / 3;
-const DISTANCE_DAMPING = 9.6;
+// Application.cpp constructs FCamera(origin, 0.2, 2.5, 80); world units are ly.
+export const MOUSE_RADIANS = 0.2 * Math.PI / 180;
+const dot = (a: Vec3,b: Vec3) => a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+const cross = (a: Vec3,b: Vec3): Vec3 => [a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+const normalize = (v: Vec3): Vec3 => v.map(x=>x/Math.hypot(...v)) as Vec3;
+const combine = (a: Vec3,b: Vec3,x: number,y: number): Vec3 => a.map((v,i)=>x*v+y*b[i]) as Vec3;
+const dtValue = (dt: number) => Number.isFinite(dt) ? Math.max(0,dt) : 0;
 
-const dot = (a: Vec3, b: Vec3): number => a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
-const cross = (a: Vec3, b: Vec3): Vec3 => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
-const normalize = (v: Vec3): Vec3 => v.map((x) => x / Math.hypot(...v)) as Vec3;
-const combine = (a: Vec3, b: Vec3, x: number, y: number): Vec3 => a.map((v, i) => x*v+y*b[i]) as Vec3;
-
-export interface CameraBasis {
-  position: Vec3;
-  forward: Vec3;
-  right: Vec3;
-  up: Vec3;
+// Rotation taking world +Y to the orbit axis (Camera.cpp::CalculateToAxisRotate).
+function axisRotate(v: Vec3,axis: Vec3,inverse=false): Vec3 {
+  const n: Vec3 = axis[0] === 0 && axis[2] === 0 ? [1,0,0] : normalize([axis[2],0,-axis[0]]);
+  const angle = Math.acos(Math.max(-1,Math.min(1,axis[1]))) * (inverse ? -1 : 1);
+  const c=Math.cos(angle),s=Math.sin(angle),nv=cross(n,v),d=dot(n,v)*(1-c);
+  return v.map((x,i)=>c*x+s*nv[i]+d*n[i]) as Vec3;
 }
 
 export class Camera {
-  position: Vec3 = [0, 2, 10];
-  yaw = 0;
-  pitch = -Math.atan2(2, 10);
+  // Rendering and trajectory APIs use Rs; scale changes preserve world ly.
+  position: Vec3 = [0,0,0];
+  yaw = 0; // -Theta, radians
+  pitch = -Math.PI/4; // Phi - pi/2
+  private rs = radiusLightYears(DEFAULT_PARAMETERS.massSolar);
+  private currentMode: CameraMode = 'orbit';
+  private freeFrame?: CameraBasis;
+  private center: Vec3 = [0,0,0];
+  private targetCenter: Vec3 = [0,0,0];
+  private axis: Vec3 = [0,1,0];
+  private targetAxis: Vec3 = [0,1,0];
+  private distance = 1/this.rs;
+  private targetDistance = Math.fround(.0003)/this.rs;
+  private movementSpeed = 2.5/this.rs;
+  private sinceModeChange = 10;
   private swayYaw = 0;
   private swayPitch = 0;
-  private swayRoll = 0;
   private targetSwayYaw = 0;
   private targetSwayPitch = 0;
-  private targetSwayRoll = 0;
   private pendingX = 0;
   private pendingY = 0;
   private pendingRoll = 0;
-  private currentMode: CameraMode = 'orbit';
-  private freeFrame?: CameraBasis;
-  private targetOrbitDistance?: number;
-  private movementSpeed = 3;
 
+  constructor() { this.applyOrbit(0,0); }
   get mode(): CameraMode { return this.currentMode; }
 
+  setMass(massSolar: number): void {
+    const next=radiusLightYears(massSolar);
+    if (!(next>0) || next===this.rs) return;
+    const scale=this.rs/next;
+    this.position=this.position.map(x=>x*scale) as Vec3;
+    this.center=this.center.map(x=>x*scale) as Vec3;
+    this.targetCenter=this.targetCenter.map(x=>x*scale) as Vec3;
+    this.distance*=scale;this.targetDistance*=scale;this.movementSpeed*=scale;
+    this.rs=next;
+  }
+
   reset(): void {
-    this.position = [0, 2, 10];
-    this.yaw = 0;
-    this.pitch = -Math.atan2(2, 10);
-    this.currentMode = 'orbit';
-    this.freeFrame = undefined;
-    this.movementSpeed = 3;
-    this.clearSway();
-    this.cancelMotion();
+    this.currentMode='orbit';this.freeFrame=undefined;
+    this.yaw=0;this.pitch=-Math.PI/4;
+    this.center=[0,0,0];this.targetCenter=[0,0,0];this.axis=[0,1,0];this.targetAxis=[0,1,0];
+    this.distance=1/this.rs;this.targetDistance=Math.fround(.0003)/this.rs;this.movementSpeed=2.5/this.rs;
+    this.swayYaw=0;this.swayPitch=0;this.targetSwayYaw=0;this.targetSwayPitch=0;
+    this.pendingX=0;this.pendingY=0;this.pendingRoll=0;this.sinceModeChange=10;
+    this.applyOrbit(0,0);
   }
 
+  setTargetOrbitCenter(center: Vec3): void { this.targetCenter=[...center]; }
+  setTargetOrbitAxis(axis: Vec3): void {
+    if (axis.every(Number.isFinite) && Math.hypot(...axis)>0) this.targetAxis=normalize(axis);
+  }
+
+  // Native TeleportOrbit: explicit pose fixture / instant orbit repositioning.
+  teleportOrbit(yawDegrees: number,polarDegrees: number,distanceRs?: number): void {
+    if (this.mode!=='orbit') return;
+    if (distanceRs!==undefined && distanceRs>0 && Number.isFinite(distanceRs)) this.targetDistance=distanceRs;
+    this.yaw=-((yawDegrees%360+360)%360)*Math.PI/180;
+    this.pitch=(Math.max(0,Math.min(180,polarDegrees))-90)*Math.PI/180;
+    this.pendingX=0;this.pendingY=0;this.pendingRoll=0;
+    this.swayYaw=0;this.swayPitch=0;this.targetSwayYaw=0;this.targetSwayPitch=0;
+    this.distance=this.targetDistance;this.center=[...this.targetCenter];this.axis=[...this.targetAxis];
+    this.applyOrbit(0,0);
+  }
+
+  // T uses the native strict >0.5s debounce. Programmatic observer switches
+  // use toggleMode directly, like the original SetCameraMode path.
+  requestModeChange(): boolean {
+    if (this.sinceModeChange<=.5) return false;
+    this.toggleMode();return true;
+  }
   toggleMode(): void {
-    this.cancelMotion();
-    const frame = this.basis();
-    if (this.mode === 'orbit') {
-      this.freeFrame = frame;
-      this.currentMode = 'free';
-      return;
-    }
-    // Keep the black hole as the Web scene's orbit target. Reconstruct local
-    // sway (including any free-flight roll) so switching never snaps the view.
-    const radius = Math.hypot(...this.position);
-    if (radius > 1e-9) {
-      this.yaw = Math.atan2(-this.position[0], this.position[2]);
-      this.pitch = Math.asin(Math.max(-1, Math.min(1, -this.position[1]/radius)));
-    }
-    this.currentMode = 'orbit';
-    this.clearSway();
-    const base = this.basis();
-    this.swayYaw = Math.atan2(dot(frame.forward, base.right), dot(frame.forward, base.forward));
-    this.swayPitch = Math.asin(Math.max(-1, Math.min(1, dot(frame.forward, base.up))));
-    const unrolled = this.basis();
-    this.swayRoll = Math.atan2(dot(frame.right, unrolled.up), dot(frame.right, unrolled.right));
-    this.freeFrame = undefined;
-    this.cancelMotion();
+    this.sinceModeChange=0;
+    const frame=this.basis();
+    if (this.mode==='orbit') { this.freeFrame=frame;this.currentMode='free';return; }
+    this.center=combine(this.position,frame.forward,1,this.distance);
+    this.axis=normalize(combine(frame.up,frame.forward,1,-1));
+    const right=axisRotate(frame.right,this.axis,true),up=axisRotate(frame.up,this.axis,true),front=axisRotate(frame.forward,this.axis,true);
+    this.yaw=-Math.atan2(-right[2],right[0]);
+    this.pitch=Math.atan2(up[1],-front[1])-Math.PI/2;
+    this.currentMode='orbit';this.freeFrame=undefined;
+    this.applyOrbit(0,0);
   }
 
-  // NPGS Camera.cpp: ProcessOrbital keeps position on a sphere around the
-  // target, while ProcessSwayMovement changes the local viewing offset only.
-  orbit(deltaX: number, deltaY: number): void {
-    if (this.mode !== 'orbit') return;
-    this.pendingX += deltaX;
-    this.pendingY += deltaY;
+  orbit(dx: number,dy: number): void {
+    if(this.mode==='orbit'){this.pendingX+=dx;this.pendingY+=dy;}
   }
-
-  private applyOrbit(deltaX: number, deltaY: number): void {
-    const radius = Math.hypot(...this.position);
-    if (radius < 1e-9 || (deltaX === 0 && deltaY === 0)) return;
-    this.yaw = (Math.atan2(-this.position[0], this.position[2]) - deltaX * 0.003) % (2 * Math.PI);
-    const limit = Math.PI / 2 - 0.01;
-    this.pitch = Math.max(-limit, Math.min(limit, Math.asin(-this.position[1] / radius) + deltaY * 0.003));
-    const cp = Math.cos(this.pitch);
-    this.position = [-radius * Math.sin(this.yaw) * cp, -radius * Math.sin(this.pitch), radius * Math.cos(this.yaw) * cp];
+  look(dx: number,dy: number): void {
+    if(this.mode==='free'){this.pendingX+=dx;this.pendingY+=dy;return;}
+    // Our sway yaw is the negative of the original local Y quaternion angle.
+    this.targetSwayYaw+=dx*MOUSE_RADIANS;
+    this.targetSwayPitch=Math.max(-89*Math.PI/180,Math.min(89*Math.PI/180,this.targetSwayPitch-dy*MOUSE_RADIANS));
   }
-
-  look(deltaX: number, deltaY: number): void {
-    if (this.mode === 'free') {
-      this.pendingX += deltaX;
-      this.pendingY += deltaY;
-      return;
-    }
-    // Keep targets unwrapped: wrapping just the target creates a full-turn
-    // reversal when current and target straddle the ±pi / 2pi boundary.
-    this.targetSwayYaw += deltaX * 0.003;
-    const limit = 89 * Math.PI / 180;
-    this.targetSwayPitch = Math.max(-limit, Math.min(limit, this.targetSwayPitch - deltaY * 0.003));
-  }
-
-  resetSway(): void {
-    this.targetSwayYaw = 0;
-    this.targetSwayPitch = 0;
-    this.targetSwayRoll = 0;
-  }
-
-  // Camera.inl::ProcessMouseScroll: positive offset is wheel-up. Orbit changes
-  // distance, free flight changes speed; neither operation changes the lens.
+  resetSway(): void { this.targetSwayYaw=0;this.targetSwayPitch=0; }
   scroll(offsetY: number): void {
-    if (!Number.isFinite(offsetY) || offsetY === 0) return;
-    if (this.mode === 'free') {
-      this.movementSpeed = Math.max(1e-4, Math.min(1e6, this.movementSpeed * Math.pow(1.2, offsetY)));
-      return;
-    }
-    const radius = Math.hypot(...this.position);
-    if (radius < 1e-9) return;
-    const target = this.targetOrbitDistance ?? radius;
-    this.targetOrbitDistance = Math.max(1e-4, Math.min(1e6, target * Math.pow(1.2, -offsetY)));
+    if(!Number.isFinite(offsetY))return;
+    // Only guard numeric overflow/underflow, not a new physical speed range.
+    const candidate=(this.mode==='free'?this.movementSpeed:this.targetDistance)*Math.pow(1.2,this.mode==='free'?offsetY:-offsetY);
+    if(!(candidate>0) || !Number.isFinite(candidate))return;
+    if(this.mode==='free')this.movementSpeed=candidate;else this.targetDistance=candidate;
+  }
+  roll(direction: number,seconds: number): void {
+    if(this.mode==='free')this.pendingRoll+=direction*75*Math.PI/180*dtValue(seconds);
   }
 
-  private clearSway(): void {
-    this.swayYaw = 0;
-    this.swayPitch = 0;
-    this.swayRoll = 0;
-    this.resetSway();
-  }
-
-  roll(direction: number, seconds: number): void {
-    if (this.mode !== 'free' || !direction) return;
-    this.pendingRoll += direction * 75 * Math.PI / 180 * Math.min(0.05, Math.max(0, seconds));
-  }
-
-  // Match NPGS ProcessTimeEvolution: accumulate requested angles, then consume
-  // 1-exp(-k*dt) each frame, including frames after mouse/key release.
   update(seconds: number): void {
-    const dt = Math.min(0.05, Math.max(0, seconds));
-    if (!dt) return;
-    const rotationFactor = -Math.expm1(-ROTATION_DAMPING * dt);
-    const rollFactor = -Math.expm1(-ROLL_DAMPING * dt);
-    const consume = (pending: number, factor: number): number => Math.abs(pending) < 1e-10 ? pending : pending * factor;
-    const dx = consume(this.pendingX, rotationFactor), dy = consume(this.pendingY, rotationFactor);
-    this.pendingX -= dx;
-    this.pendingY -= dy;
-    if (this.mode === 'orbit') {
-      if (this.targetOrbitDistance !== undefined) {
-        const radius = Math.hypot(...this.position);
-        if (radius > 1e-9) {
-          const difference = this.targetOrbitDistance - radius;
-          const next = Math.abs(difference) < 1e-10 * Math.max(1, radius)
-            ? this.targetOrbitDistance
-            : radius + difference * Math.min(1, DISTANCE_DAMPING * dt);
-          // Radial dolly, independent of right-button sway: orientation and
-          // background ray directions are unchanged when zooming alone.
-          this.position = this.position.map((value) => value * next / radius) as Vec3;
-          if (next === this.targetOrbitDistance) this.targetOrbitDistance = undefined;
+    const dt=dtValue(seconds),factor=-Math.expm1(-dt);
+    const dx=this.pendingX*factor,dy=this.pendingY*factor;
+    this.pendingX-=dx;this.pendingY-=dy;
+    this.swayYaw+=(this.targetSwayYaw-this.swayYaw)*factor;
+    this.swayPitch+=(this.targetSwayPitch-this.swayPitch)*factor;
+    if(this.mode==='orbit'){
+      this.distance+=(this.targetDistance-this.distance)*Math.min(1,9.6*dt);
+      const difference=combine(this.targetAxis,this.axis,1,-1),length=Math.hypot(...difference);
+      if(length>0){
+        const angle=Math.asin(Math.min(1,length/2));
+        if(angle>1e-10){
+          let tangent=cross(cross(this.axis,difference),this.axis);
+          // Native antipodal cross is zero: select a finite tangent there.
+          if(Math.hypot(...tangent)<1e-15)tangent=cross(this.axis,Math.abs(this.axis[0])<.9?[1,0,0]:[0,0,1]);
+          this.axis=normalize(combine(this.axis,normalize(tangent),1,Math.min(1,3*dt)*2*angle));
         }
       }
-      this.swayYaw += consume(this.targetSwayYaw - this.swayYaw, rotationFactor);
-      this.swayPitch += consume(this.targetSwayPitch - this.swayPitch, rotationFactor);
-      this.swayRoll += consume(this.targetSwayRoll - this.swayRoll, rotationFactor);
-      this.applyOrbit(dx, dy);
-    } else {
-      const roll = consume(this.pendingRoll, rollFactor);
-      this.pendingRoll -= roll;
-      if (dx !== 0 || dy !== 0 || roll !== 0) this.applyFreeRotation(dx, dy, roll);
+      this.center=combine(this.center,this.targetCenter,1-Math.min(1,3*dt),Math.min(1,3*dt));
+      this.applyOrbit(dx,dy);
+    }else{
+      this.swayYaw=0;this.swayPitch=0;this.targetSwayYaw=0;this.targetSwayPitch=0;
+      const roll=this.pendingRoll*(-Math.expm1(-dt/3));this.pendingRoll-=roll;
+      if(dx!==0 || dy!==0 || roll!==0)this.applyFreeRotation(dx,dy,roll);
     }
+    if(this.sinceModeChange<10)this.sinceModeChange+=dt;
   }
 
-  // Used only at lifecycle boundaries, not ordinary button/key release.
+  // Browser focus / visibility boundaries clear unconsumed input. Native T
+  // itself preserves it. A reset explicitly reestablishes native startup state.
   cancelMotion(): void {
-    this.targetOrbitDistance = undefined;
-    this.pendingX = 0;
-    this.pendingY = 0;
-    this.pendingRoll = 0;
-    this.targetSwayYaw = this.swayYaw;
-    this.targetSwayPitch = this.swayPitch;
-    this.targetSwayRoll = this.swayRoll;
+    this.pendingX=0;this.pendingY=0;this.pendingRoll=0;
+    this.targetSwayYaw=this.swayYaw;this.targetSwayPitch=this.swayPitch;
+    this.targetDistance=this.distance;
   }
 
-  private applyFreeRotation(deltaX: number, deltaY: number, roll: number): void {
-    const frame = this.freeFrame!;
-    // Inverse of original view Yaw*Pitch*Roll: camera-to-world applies
-    // inverse Roll, then inverse Pitch, then inverse Yaw in its local frame.
-    const rolledRight = combine(frame.right, frame.up, Math.cos(roll), -Math.sin(roll));
-    const rolledUp = cross(rolledRight, frame.forward);
-    const yaw = deltaX * 0.003, pitch = deltaY * 0.003;
-    const pitchForward = combine(frame.forward, rolledUp, Math.cos(pitch), Math.sin(pitch));
-    const right = combine(rolledRight, pitchForward, Math.cos(yaw), Math.sin(yaw));
-    const forward = normalize(combine(pitchForward, rolledRight, Math.cos(yaw), -Math.sin(yaw)));
-    const up = normalize(cross(right, forward));
-    this.freeFrame = { position: [...this.position], forward, right: normalize(cross(forward, up)), up };
+  private applyOrbit(dx: number,dy: number): void {
+    this.yaw=(this.yaw-dx*MOUSE_RADIANS)%(2*Math.PI);
+    this.pitch=Math.max(-Math.PI/2,Math.min(Math.PI/2,this.pitch+dy*MOUSE_RADIANS));
+    const front=axisRotate([Math.sin(this.yaw)*Math.cos(this.pitch),Math.sin(this.pitch),-Math.cos(this.yaw)*Math.cos(this.pitch)],this.axis);
+    this.position=combine(this.center,front,1,-this.distance);
   }
-
+  private applyFreeRotation(dx: number,dy: number,roll: number): void {
+    const frame=this.freeFrame!;
+    const rolledRight=combine(frame.right,frame.up,Math.cos(roll),-Math.sin(roll));
+    const rolledUp=cross(rolledRight,frame.forward);
+    const yaw=dx*MOUSE_RADIANS,pitch=dy*MOUSE_RADIANS;
+    const pitchForward=combine(frame.forward,rolledUp,Math.cos(pitch),Math.sin(pitch));
+    const right=combine(rolledRight,pitchForward,Math.cos(yaw),Math.sin(yaw));
+    const forward=normalize(combine(pitchForward,rolledRight,Math.cos(yaw),-Math.sin(yaw)));
+    const up=normalize(cross(right,forward));
+    this.freeFrame={position:[...this.position],forward,right:normalize(cross(forward,up)),up};
+  }
   basis(): CameraBasis {
-    if (this.mode === 'free') {
-      const frame = this.freeFrame!;
-      return { position: [...this.position], forward: [...frame.forward], right: [...frame.right], up: [...frame.up] };
+    if(this.mode==='free'){
+      const b=this.freeFrame!;return {position:[...this.position],forward:[...b.forward],right:[...b.right],up:[...b.up]};
     }
-    const cy = Math.cos(this.yaw), sy = Math.sin(this.yaw);
-    const cp = Math.cos(this.pitch), sp = Math.sin(this.pitch);
-    // Right-handed coordinates: +Y up; initial view toward -Z.
-    const forward: Vec3 = [sy * cp, sp, -cy * cp];
-    const right: Vec3 = [cy, 0, sy];
-    const up: Vec3 = [-sy * sp, cp, cy * sp];
-    const ys = Math.sin(this.swayYaw), yc = Math.cos(this.swayYaw);
-    const ps = Math.sin(this.swayPitch), pc = Math.cos(this.swayPitch);
-    // Equivalent to NPGS Cam2WorldBase * SwayYaw * SwayPitch; offsets live
-    // in the orbital frame, so an orbit never discards a right-drag head turn.
-    const localToWorld = (x: number, y: number, z: number): Vec3 => [0, 1, 2].map(
-      (axis) => x * right[axis] + y * up[axis] + z * forward[axis],
-    ) as Vec3;
-    const lookRight = localToWorld(yc, 0, -ys);
-    const lookUp = localToWorld(-ys * ps, pc, -yc * ps);
-    return {
-      position: [...this.position],
-      forward: localToWorld(ys * pc, ps, yc * pc),
-      right: combine(lookRight, lookUp, Math.cos(this.swayRoll), Math.sin(this.swayRoll)),
-      up: combine(lookUp, lookRight, Math.cos(this.swayRoll), -Math.sin(this.swayRoll)),
-    };
+    const cy=Math.cos(this.yaw),sy=Math.sin(this.yaw),cp=Math.cos(this.pitch),sp=Math.sin(this.pitch);
+    const front=axisRotate([sy*cp,sp,-cy*cp],this.axis),right=axisRotate([cy,0,sy],this.axis),up=axisRotate([-sy*sp,cp,cy*sp],this.axis);
+    const ys=Math.sin(this.swayYaw),yc=Math.cos(this.swayYaw),ps=Math.sin(this.swayPitch),pc=Math.cos(this.swayPitch);
+    const world=(x:number,y:number,z:number):Vec3=>[0,1,2].map(i=>x*right[i]+y*up[i]+z*front[i]) as Vec3;
+    return {position:[...this.position],forward:world(ys*pc,ps,yc*pc),right:world(yc,0,-ys),up:world(-ys*ps,pc,-yc*ps)};
   }
-
-  move(right: number, up: number, forward: number, seconds: number, fast: boolean): void {
-    if (this.mode === 'orbit') {
-      const radians = 90 * Math.PI / 180 * Math.min(0.05, Math.max(0, seconds));
-      this.orbit(right * radians / 0.003, -forward * radians / 0.003);
-      return;
-    }
-    const length = Math.hypot(right, up, forward);
-    if (!length) return;
-    const basis = this.basis();
-    // Clamp stalled frames; diagonal movement has the same speed as one axis.
-    const distance = Math.min(0.05, Math.max(0, seconds)) * this.movementSpeed * (fast ? 5 : 1) / length;
-    for (let axis = 0; axis < 3; axis++) {
-      this.position[axis] += distance * (
-        right * basis.right[axis] + up * basis.up[axis] + forward * basis.forward[axis]
-      );
-    }
+  move(right: number,up: number,forward: number,seconds: number,_fast=false): void {
+    const dt=dtValue(seconds);
+    if(this.mode==='orbit'){this.orbit(right*90*Math.PI/180*dt/MOUSE_RADIANS,-forward*90*Math.PI/180*dt/MOUSE_RADIANS);return;}
+    const length=Math.hypot(right,up,forward);if(!length)return;
+    const b=this.basis(),distance=dt*this.movementSpeed/length;
+    this.position=this.position.map((v,i)=>v+distance*(right*b.right[i]+up*b.up[i]+forward*b.forward[i])) as Vec3;
   }
 }

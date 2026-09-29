@@ -26,9 +26,7 @@ export class CameraInput {
       if (event.code === 'KeyT') {
         event.preventDefault();
         if (!event.repeat && !this.trajectoryActive()) {
-          this.clear();
-          camera.toggleMode();
-          onModeChange(camera.mode);
+          if (camera.requestModeChange()) onModeChange(camera.mode);
         }
         return;
       }

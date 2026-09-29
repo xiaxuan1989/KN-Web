@@ -80,7 +80,7 @@ function start(): void {
       cameraMode.textContent = mode === 'orbit' ? '轨道模式' : '自由视角';
       inputHelp.textContent = mode === 'orbit'
         ? 'T 切换自由视角。左键 / WASD 绕黑洞转，右键独立摆头，松手后惯性滑停；中键平滑回正，滚轮拉近 / 拉远黑洞，FOV 不变。'
-        : 'T 切换轨道模式。左键转向，QE 滚转，松手后惯性滑停；WASD / RF 平移，Shift 加速，滚轮调整移动速度。';
+        : 'T 切换轨道模式。左键转向，QE 滚转，松手后惯性滑停；WASD / RF 平移，滚轮调整移动速度。返回轨道模式后，环绕中心和轴会平滑归位。';
     },
   });
   void renderer.start();
