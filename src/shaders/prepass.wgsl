@@ -1,6 +1,6 @@
 // NPGS BlackHole_prepass / BlackHole_composite. Native statuses are Sky=1,
-// Absorbed/Lost=0, Opaque=3. Unsupported observers / numerical failures retain
-// the Web-only diagnostic flag -2; exhausted and bound rays use native 0.
+// Absorbed/Lost=0, Opaque=3. Observer rejection uses native opaque black.
+// Numerical failures retain Web diagnostic -2; exhausted/bound rays use 0.
 @group(2) @binding(0) var prepassDistortion: texture_2d<f32>;
 @group(2) @binding(1) var prepassVolumetric: texture_2d<f32>;
 struct PrepassOutput {
@@ -8,13 +8,19 @@ struct PrepassOutput {
     @location(1) volumetric: vec4<f32>,
 };
 fn TraceScreen(uv: vec2<f32>) -> TraceResult {
-    return TraceRay(camera.position.xyz,ScreenDirection(uv),blackHole.spin,blackHole.charge,game.quality);
+    var direction = ScreenDirection(uv);
+    if (blackHole.observerMode == -1.0) {
+        direction = FragUvToDir(uv,tan(game.fovRadians*0.5),game.resolution);
+    }
+    let frame = ObserverTetrad(camera.observerU,camera.observerE1,camera.observerE2,camera.observerE3,camera.velocity.w > 0.5);
+    return TraceTetradRay(camera.position.xyz,direction,blackHole.spin,blackHole.charge,game.quality,i32(blackHole.observerMode),camera.velocity.xyz,frame);
 }
 fn EncodeTrace(ray: TraceResult) -> PrepassOutput {
     if (ray.status == TRACE_ESCAPED) {
         let shift = BackgroundFrequencyShift(ray.energy,blackHole.backShiftMax);
-        return PrepassOutput(vec4<f32>(ray.direction*shift,1),vec4<f32>(0));
+        return PrepassOutput(vec4<f32>(ray.direction*shift,select(1.0,1.2,ray.energy < 0.0)),vec4<f32>(0));
     }
+    if (ray.status == TRACE_OPAQUE) { return PrepassOutput(vec4<f32>(0,0,0,3),vec4<f32>(0,0,0,1)); }
     if (ray.status == TRACE_INVALID) { return PrepassOutput(vec4<f32>(0,0,0,-2),vec4<f32>(0)); }
     return PrepassOutput(vec4<f32>(0),vec4<f32>(0));
 }
@@ -78,8 +84,8 @@ fn fs_composite(input: VertexOutput) -> @location(0) vec4<f32> {
     var data: PrepassOutput;
     var direction = vec3<f32>(0);
     var shift = 0.0;
-    if (NeedsRetrace(textureUv)) {
-        let ray = TraceScreen(input.uv);
+    if (blackHole.fullTrace > 0.5 || NeedsRetrace(textureUv)) {
+        let ray = TraceScreen(vec2<f32>(textureUv.x,1.0-textureUv.y));
         data = EncodeTrace(ray);
         if (ray.status == TRACE_ESCAPED) {
             direction = ray.direction;
@@ -97,7 +103,7 @@ fn fs_composite(input: VertexOutput) -> @location(0) vec4<f32> {
     let sky = textureSample(background,backgroundSampler,sampleDirection);
     if (status < -1.5) { return vec4<f32>(0.38,0.05,0.28,select(1.0,0.0,game.postEnabled > 0.5)); }
     var color = data.volumetric;
-    if (color.a < 0.99 && isSky) {
+    if (color.a < 0.99 && isSky && abs(status-round(status)) < 0.1) {
         let invAlpha = 1.0-color.a;
         color += 0.9999999*MapBackground(sky,shift)*vec4<f32>(pow(invAlpha,1.0),pow(invAlpha,1.6),pow(invAlpha,2.5),1);
     }

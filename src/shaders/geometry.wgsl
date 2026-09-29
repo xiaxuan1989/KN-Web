@@ -90,13 +90,42 @@ fn LowerIndex(P: vec4<f32>, geo: KerrGeometry) -> vec4<f32> {
     return vec4<f32>(P.xyz, -P.w) + geo.f * dot(geo.l_down, P) * geo.l_down;
 }
 
-// Exact static-observer branch (mode 0) of GetInitialMomentum. Other observer
-// modes and transported four-dimensional tetrads are outside Phase 2.
-fn GetInitialMomentum(RayDir: vec3<f32>, X: vec4<f32>, a: f32, Q: f32, fade: f32, r_sign: f32, outgoing: bool) -> vec4<f32> {
+// Original observer modes: 0 static, 1 infalling, 2 coordinate velocity,
+// 3 reversed coordinate velocity. A non-timelike velocity returns the native sentinel.
+fn GetObserverMomentum(RayDir: vec3<f32>, X: vec4<f32>, a: f32, Q: f32, fade: f32, r_sign: f32, outgoing: bool, mode: i32, velocity: vec3<f32>) -> vec4<f32> {
     let geo = ComputeGeometryScalars(X.xyz, a, Q, fade, r_sign, outgoing);
     let g_tt = -1.0 + geo.f;
     let time_comp = 1.0 / sqrt(max(1e-9, -g_tt));
-    let U_up = vec4<f32>(0.0, 0.0, 0.0, time_comp);
+    var U_up = vec4<f32>(0.0, 0.0, 0.0, time_comp);
+    if (mode == 1) {
+        let r = geo.r; let r2 = geo.r2; let a2 = geo.a2;
+        let rho2 = r2+a2*X.y*X.y/(r2+1e-9);
+        let massCharge = 2.0*CONST_M*r-Q*Q;
+        let xi = sqrt(max(0.0,massCharge*(r2+a2)));
+        let denomPhi = rho2*(massCharge+xi);
+        var uPhi = 0.0;
+        if (abs(denomPhi) > 1e-9) { uPhi = -massCharge*a/denomPhi; }
+        let uR = -xi/max(1e-9,rho2);
+        let invR2A2 = 1.0/(r2+a2);
+        let spatial = vec3<f32>((r*X.x-a*X.z)*invR2A2*uR+X.z*uPhi,
+            (X.y/r)*uR,(r*X.z+a*X.x)*invR2A2*uR-X.x*uPhi);
+        let lDot = dot(geo.l_down.xyz,spatial);
+        let A = -1.0+geo.f; let B = 2.0*geo.f*lDot;
+        let C = dot(spatial,spatial)+geo.f*lDot*lDot+1.0;
+        let sqrtDet = sqrt(max(0.0,B*B-4.0*A*C));
+        var ut: f32;
+        if (abs(A) < 1e-7) { ut = -C/max(1e-19,B); }
+        else if (B < 0.0) { ut = 2.0*C/(-B+sqrtDet); }
+        else { ut = (-B-sqrtDet)/(2.0*A); }
+        U_up = mix(U_up,vec4<f32>(spatial,ut),fade);
+    } else if (mode == 2 || mode == 3) {
+        var v = select(velocity,-velocity,mode == 3);
+        if (any((bitcast<vec3<u32>>(v) & vec3<u32>(0x7f800000u)) == vec3<u32>(0x7f800000u))) { v = vec3<f32>(0); }
+        let V_up = vec4<f32>(v,1);
+        let V_sq = dot(V_up,LowerIndex(V_up,geo));
+        if (V_sq < 0.0) { U_up = V_up*inverseSqrt(-V_sq); }
+        else { return vec4<f32>(114514.0); }
+    }
     let U_down = LowerIndex(U_up, geo);
     let m_r = -normalize(X.xyz);
     var WorldUp = vec3<f32>(0.0, 1.0, 0.0);
@@ -126,6 +155,23 @@ fn GetInitialMomentum(RayDir: vec3<f32>, X: vec4<f32>, a: f32, Q: f32, fade: f32
     e3 /= n3;
     let P_up = U_up - (k_r * e1 + k_theta * e2 + k_phi * e3);
     return LowerIndex(P_up, geo);
+}
+
+fn GetInitialMomentum(RayDir: vec3<f32>, X: vec4<f32>, a: f32, Q: f32, fade: f32, r_sign: f32, outgoing: bool) -> vec4<f32> {
+    return GetObserverMomentum(RayDir,X,a,Q,fade,r_sign,outgoing,0,vec3<f32>(0));
+}
+// Native mode -1 consumes an externally transported tetrad in its own chart.
+// This kernel does not invent a tetrad or advance the observer's worldline.
+fn GetTetradMomentum(RayDir: vec3<f32>, X: vec4<f32>, a: f32, Q: f32, fade: f32, r_sign: f32,
+    outgoing: bool, cameraOutgoing: bool, U: vec4<f32>, e1: vec4<f32>, e2: vec4<f32>, e3: vec4<f32>) -> vec4<f32> {
+    let v = normalize(RayDir);
+    let up = U+v.x*e1+v.y*e2+v.z*e3;
+    let geo = ComputeGeometryScalars(X.xyz,a,Q,fade,r_sign,cameraOutgoing);
+    var cov = LowerIndex(up,geo);
+    if (outgoing != cameraOutgoing) {
+        cov = transformKerrSchild_YSpin(State(X,cov),r_sign,CONST_M,a,Q,outgoing).P;
+    }
+    return cov;
 }
 
 fn GetDerivativesAnalytic(S: State, a: f32, Q: f32, fade: f32, outgoing: bool, inputGeo: KerrGeometry) -> State {

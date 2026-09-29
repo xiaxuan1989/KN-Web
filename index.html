@@ -50,6 +50,15 @@
           <label for="mass">质量 M / M☉</label><input id="mass" data-parameter="massSolar" type="number" step="any" />
           <label for="spin">自旋 a*</label><input id="spin" data-parameter="spin" type="number" step="0.01" />
           <label for="charge">电荷 Q*</label><input id="charge" data-parameter="charge" type="number" step="0.01" />
+          <label for="observer-mode">物理观者</label>
+          <select id="observer-mode">
+            <option value="-1">四维轨迹观者</option><option value="0">静态观者</option><option value="1">自由落体观者</option>
+            <option value="2">速度观者</option><option value="3">反向速度观者</option>
+          </select>
+          <label for="manual-velocity">指定观者速度</label><input id="manual-velocity" data-toggle="manualVelocity" type="checkbox" />
+          <label for="velocity-x">坐标速度 X / c</label><input id="velocity-x" data-parameter="velocityX" type="number" step="0.01" />
+          <label for="velocity-y">坐标速度 Y / c</label><input id="velocity-y" data-parameter="velocityY" type="number" step="0.01" />
+          <label for="velocity-z">坐标速度 Z / c</label><input id="velocity-z" data-parameter="velocityZ" type="number" step="0.01" />
           <label for="frequency-shift">颜色频移</label><input id="frequency-shift" data-toggle="frequencyShift" type="checkbox" />
           <label for="back-shift-max">频移上限</label><input id="back-shift-max" data-parameter="backShiftMax" type="number" step="0.1" />
           <label for="background-brightness">背景亮度倍率</label><input id="background-brightness" data-parameter="backgroundBrightness" type="number" step="0.1" />
@@ -71,7 +80,7 @@
             <label for="gamma">Gamma</label><input id="gamma" data-parameter="gamma" type="number" step="0.1" />
             <label for="bloom-strength">泛光强度</label><input id="bloom-strength" data-parameter="bloomStrength" type="number" step="0.01" />
           </div>
-          <p class="note">沿用 NPGS 无抖动历史混合；权重由帧间隔、质量和时间倍率决定，运动超过原阈值时只用当前帧。参数变化会渐变，时间倍率当前用于历史混合。关闭后处理可对照原图，诊断视图保持原色。</p>
+          <p class="note">沿用 NPGS 无抖动历史混合；权重由帧间隔、质量和时间倍率决定，运动超过原阈值时只用当前帧。参数变化会渐变，时间倍率用于历史混合与四维轨迹推进。关闭后处理可对照原图，诊断视图保持原色。</p>
         </details>
         <div class="actions">
           <button id="reset-camera" type="button">重置相机</button>
@@ -80,8 +89,10 @@
         <p id="verification" role="status" aria-live="polite">等待 GPU 回读</p>
         <p class="note" id="input-help">点击画布后，T 切换自由视角。左键 / WASD 绕黑洞转，右键独立摆头，松手后惯性滑停；中键平滑回正，滚轮拉近 / 拉远黑洞，FOV 不变。</p>
         <p class="note" id="touch-help">触屏：单指拖动对应左键，双指同向拖动对应右键，双指捏合对应滚轮。轨道模式下，张开拉近、合拢拉远；可同时缩放和转动视角。</p>
-        <p class="note">沿 NPGS 类光测地线追踪至 Universe 0 星空。切换「原背景」比较透镜畸变，切换「方向网格」观察临界曲线附近的多重成像。当前为外部静态观者，无吸积盘。颜色频移采用NPGS映射；关闭可对照贴图原色，背景亮度倍率仅在开启时生效。</p>
-        <p class="note">进入视界、预算耗尽或回转过多均输出黑色（星空本身也有暗区）；紫色：观者 / 参数超出本阶段范围或数值异常。仅支持 a*² + Q*² ≤ 1，且相机位于外部静态区。</p>
+        <p class="note">沿 NPGS 类光测地线追踪至 Universe 0 星空。切换「原背景」比较透镜畸变，切换「方向网格」观察临界曲线附近的多重成像。支持静态、落体、速度及四维轨迹观者，无吸积盘。颜色频移采用NPGS映射；关闭可对照贴图原色，背景亮度倍率仅在开启时生效。</p>
+        <p class="note">进入视界、预算耗尽或回转过多均输出黑色（星空本身也有暗区）；观者无法保持类时速度时按原版输出黑色；紫色表示数值异常。超极限参数可追踪裸奇点的正 r 区域。</p>
+        <p class="note" id="observer-status"></p>
+        <p class="note">落体模式改变当地观测标架，不自动移动相机。速度模式默认使用相机移动产生的平滑坐标速度；勾选「指定观者速度」可做固定位置对照，单位为 c。坐标速度是否可用由当地时空度规判断。四维模式将启用时的位置和速度作为初值，随后沿轨迹移动；鼠标调整头部朝向；此时 T 键与平移键暂停使用。时间倍率控制推进，设为 0 可暂停，重置相机重新出发。</p>
         <p class="note">默认随窗口调整输出尺寸和画面比例，预计算宽高各为输出的一半。不额外乘 Retina 像素倍率。取消「跟随窗口尺寸」可设置固定宽高。关闭预计算可对照全分辨率追踪；追踪预算随自旋、电荷和画质参数 quality 调整。距离用 Rs 归一化，固定相机 Rs 坐标时，单独改变太阳质量不会改变透镜形状。</p>
         <button id="retry" type="button" hidden>重新初始化</button>
       </section>

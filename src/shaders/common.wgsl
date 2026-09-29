@@ -12,11 +12,11 @@ struct BlackHoleArgs {
     massSolar: f32,
     spin: f32,                   // a*
     charge: f32,                 // Q*
-    padding: f32,
+    observerMode: f32,
     frequencyShift: f32,
     backShiftMax: f32,
     backgroundBrightness: f32,
-    padding2: f32,
+    fullTrace: f32,
 };
 
 struct CameraArgs {
@@ -24,6 +24,11 @@ struct CameraArgs {
     forward: vec4<f32>,
     right: vec4<f32>,            // w: TAA jitter x in pixels
     up: vec4<f32>,               // w: TAA jitter y in pixels
+    velocity: vec4<f32>,         // xyz velocity/c; w: transported frame uses outgoing chart
+    observerU: vec4<f32>,
+    observerE1: vec4<f32>,
+    observerE2: vec4<f32>,
+    observerE3: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> game: GameArgs;

@@ -68,8 +68,9 @@ export class TemporalState {
   private velocity: Vec3 = [0,0,0];
   private frames = 0;
   private enabled = false;
+  cameraVelocity(): Vec3 { return [...this.velocity]; }
   reset(): void { this.previous = undefined; this.previousDt = 0; this.velocity = [0,0,0]; this.frames = 0; this.enabled = false; }
-  next(camera: CameraBasis, massSolar: number, timeRate: number, dt: number, enabled: boolean): { weight: number; jitter: [number,number] } {
+  next(camera: CameraBasis, massSolar: number, timeRate: number, dt: number, enabled: boolean, velocityOverride?: Vec3): { weight: number; jitter: [number,number] } {
     const current = temporalCamera(camera,massSolar);
     this.frames++;
     if (this.previous) {
@@ -77,7 +78,7 @@ export class TemporalState {
       this.velocity = this.frames <= 10 ? [0,0,0]
         : smoothCameraVelocity(this.previous,current,this.velocity,dt,this.previousDt,timeRate);
     }
-    const moving = this.previous && motionRequiresCurrent(this.previous,current,this.velocity,dt);
+    const moving = this.previous && motionRequiresCurrent(this.previous,current,velocityOverride ?? this.velocity,dt);
     const weight = !enabled || !this.enabled || !this.previous || dt <= 0 || moving ? 1 : blendWeight(dt,massSolar,timeRate);
     this.enabled = enabled;
     this.previous = current;

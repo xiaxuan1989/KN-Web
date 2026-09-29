@@ -1,6 +1,11 @@
 export type DebugView = 0 | 1 | 2 | 3 | 4 | 5;
 
 export interface Parameters {
+  observerMode: -1 | 0 | 1 | 2 | 3;
+  manualVelocity: boolean;
+  velocityX: number;
+  velocityY: number;
+  velocityZ: number;
   frequencyShift: boolean;
   backShiftMax: number;
   backgroundBrightness: number;
@@ -27,6 +32,7 @@ export interface Parameters {
 // Match NPGS: mass in solar masses, spin a* and charge Q* dimensionless.
 // Positions are in Rs; the later geometry port will use CONST_M = 0.5.
 export const DEFAULT_PARAMETERS: Readonly<Parameters> = Object.freeze({
+  observerMode: 0, manualVelocity: false, velocityX: 0, velocityY: 0, velocityZ: 0,
   frequencyShift: true, backShiftMax: 1.5, backgroundBrightness: 2,
   postProcessing: true, taa: true, timeRate: 1, bloom: true,
   exposure: 0, gamma: 2.2, bloomStrength: 0.08,
@@ -41,6 +47,7 @@ export const DEFAULT_PARAMETERS: Readonly<Parameters> = Object.freeze({
 });
 
 export const PARAMETER_LIMITS = {
+  velocityX: [-10, 10], velocityY: [-10, 10], velocityZ: [-10, 10],
   backShiftMax: [1, 16],
   backgroundBrightness: [0, 100],
   timeRate: [-1e6, 1e6],

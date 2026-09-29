@@ -2,6 +2,12 @@ import { PARAMETER_LIMITS, setParameter, type NumericParameter, type Parameters 
 
 export function bindControls(parameters: Parameters): { sync: () => void; dispose: () => void } {
   const controller = new AbortController();
+  const observer = document.querySelector<HTMLSelectElement>('#observer-mode')!;
+  observer.value = String(parameters.observerMode);
+  observer.addEventListener('change', () => {
+    const mode = Number(observer.value);
+    if (mode === -1 || mode === 0 || mode === 1 || mode === 2 || mode === 3) parameters.observerMode = mode;
+  }, { signal: controller.signal });
   const controls = (Object.keys(PARAMETER_LIMITS) as NumericParameter[]).map((key) => {
     const input = document.querySelector<HTMLInputElement>(`[data-parameter="${key}"]`)!;
     const [min, max] = PARAMETER_LIMITS[key];
@@ -20,7 +26,7 @@ export function bindControls(parameters: Parameters): { sync: () => void; dispos
     }
   };
   syncSizeControls();
-  for (const key of ['fitWindow', 'prepass', 'frequencyShift', 'postProcessing', 'taa', 'bloom'] as const) {
+  for (const key of ['manualVelocity', 'fitWindow', 'prepass', 'frequencyShift', 'postProcessing', 'taa', 'bloom'] as const) {
     const input = document.querySelector<HTMLInputElement>(`[data-toggle="${key}"]`)!;
     input.checked = parameters[key];
     input.addEventListener('change', () => {

@@ -10,6 +10,7 @@ const adapter = document.querySelector<HTMLElement>('#adapter')!;
 const prepassResolution = document.querySelector<HTMLElement>('#prepass-resolution')!;
 const resolution = document.querySelector<HTMLElement>('#resolution')!;
 const taaWeight = document.querySelector<HTMLElement>('#taa-weight')!;
+const observerStatus = document.querySelector<HTMLElement>('#observer-status')!;
 const fps = document.querySelector<HTMLElement>('#fps')!;
 const retry = document.querySelector<HTMLButtonElement>('#retry')!;
 const position = document.querySelector<HTMLElement>('#position')!;
@@ -61,6 +62,7 @@ function start(): void {
       prepassResolution.textContent = stats.prepassEnabled ? `${stats.prepassWidth} × ${stats.prepassHeight}` : '关闭 · 全分辨率追踪';
       fps.textContent = stats.fps === null ? '—' : stats.fps.toFixed(1);
       taaWeight.textContent = stats.temporalWeight === null ? '关闭' : `${(stats.temporalWeight*100).toFixed(2)}% 当前帧`;
+      observerStatus.textContent = stats.observerStatus;
       position.textContent = stats.position.map((value) => value.toFixed(2)).join(', ');
       direction.textContent = stats.direction.map((value) => value.toFixed(3)).join(', ');
       elapsed.textContent = `${stats.time.toFixed(1)} s`;

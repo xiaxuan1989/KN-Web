@@ -13,16 +13,19 @@ export class CameraInput {
   private touchGesture: { x: number; y: number; distance: number } | null = null;
   private readonly canvas: HTMLCanvasElement;
   private readonly camera: Camera;
+  private readonly trajectoryActive: () => boolean;
 
-  constructor(canvas: HTMLCanvasElement, camera: Camera, onModeChange: (mode: CameraMode) => void = () => {}) {
+  constructor(canvas: HTMLCanvasElement, camera: Camera, onModeChange: (mode: CameraMode) => void = () => {},
+    trajectoryActive: () => boolean = () => false) {
     this.canvas = canvas;
     this.camera = camera;
+    this.trajectoryActive = trajectoryActive;
     const options = { signal: this.controller.signal };
     canvas.addEventListener('keydown', (event) => {
       if (event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
       if (event.code === 'KeyT') {
         event.preventDefault();
-        if (!event.repeat) {
+        if (!event.repeat && !this.trajectoryActive()) {
           this.clear();
           camera.toggleMode();
           onModeChange(camera.mode);
@@ -117,7 +120,7 @@ export class CameraInput {
     // gesture makes a symmetric pinch briefly look like a right-button drag.
     this.updateTouches();
     const axis = (positive: string, negative: string) => Number(this.keys.has(positive)) - Number(this.keys.has(negative));
-    this.camera.move(axis('KeyD', 'KeyA'), axis('KeyR', 'KeyF'), axis('KeyW', 'KeyS'), seconds,
+    if (!this.trajectoryActive()) this.camera.move(axis('KeyD', 'KeyA'), axis('KeyR', 'KeyF'), axis('KeyW', 'KeyS'), seconds,
       this.keys.has('ShiftLeft') || this.keys.has('ShiftRight'));
     this.camera.roll(axis('KeyE', 'KeyQ'), seconds);
     this.camera.update(seconds);

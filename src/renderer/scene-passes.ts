@@ -45,7 +45,7 @@ export class ScenePasses {
     this.group = this.device.createBindGroup({ layout: this.prepassLayout, entries: this.textures.map((texture,binding) => ({ binding, resource: texture.createView() })) });
   }
 
-  encode(encoder: GPUCommandEncoder, target: GPUTextureView, full: GPUBindGroup, half: GPUBindGroup, background: GPUBindGroup, usePrepass: boolean): void {
+  encode(encoder: GPUCommandEncoder, target: GPUTextureView, full: GPUBindGroup, half: GPUBindGroup, background: GPUBindGroup, usePrepass: boolean, lensView = false): void {
     if (usePrepass) {
       const pass = encoder.beginRenderPass({ label: 'Half resolution KN prepass', colorAttachments: this.textures.map(texture => ({
         view: texture.createView(), clearValue: { r: 0,g: 0,b: 0,a: 0 }, loadOp: 'clear', storeOp: 'store',
@@ -55,8 +55,8 @@ export class ScenePasses {
     const pass = encoder.beginRenderPass({ label: usePrepass ? 'Full resolution KN composite' : 'Full resolution trace / diagnostic',
       colorAttachments: [{ view: target, clearValue: { r: 0,g: 0,b: 0,a: 1 }, loadOp: 'clear', storeOp: 'store' }],
     });
-    pass.setPipeline(this.pipelines[usePrepass ? 2 : 0]); pass.setBindGroup(0,full); pass.setBindGroup(1,background);
-    if (usePrepass) pass.setBindGroup(2,this.group!);
+    pass.setPipeline(this.pipelines[usePrepass || lensView ? 2 : 0]); pass.setBindGroup(0,full); pass.setBindGroup(1,background);
+    if (usePrepass || lensView) pass.setBindGroup(2,this.group!);
     pass.draw(3); pass.end();
   }
 
