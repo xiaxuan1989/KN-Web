@@ -17,6 +17,7 @@ export interface Parameters {
   charge: number;
   fovDegrees: number;
   quality: number;
+  fitWindow: boolean;
   renderWidth: number;
   renderHeight: number;
   prepass: boolean;
@@ -35,7 +36,7 @@ export const DEFAULT_PARAMETERS: Readonly<Parameters> = Object.freeze({
   charge: 0.4,
   fovDegrees: 60,
   quality: 1,
-  renderWidth: 1280, renderHeight: 960, prepass: true,
+  fitWindow: true, renderWidth: 1280, renderHeight: 960, prepass: true,
   debugView: 3,
 });
 

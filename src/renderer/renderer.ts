@@ -218,7 +218,11 @@ export class Renderer {
 
   private draw(): void {
     const device = this.device!;
-    const { full: [width,height], half } = renderSize(this.parameters.renderWidth,this.parameters.renderHeight,device.limits.maxTextureDimension2D);
+    // NPGS follows window size; macOS disables Retina framebuffer scaling.
+    // CSS pixels therefore drive the default output, without multiplying by DPR.
+    const requestedWidth = this.parameters.fitWindow ? this.canvas.clientWidth : this.parameters.renderWidth;
+    const requestedHeight = this.parameters.fitWindow ? this.canvas.clientHeight : this.parameters.renderHeight;
+    const { full: [width,height], half } = renderSize(requestedWidth,requestedHeight,device.limits.maxTextureDimension2D);
     this.halfSize = half;
     this.usePrepass = this.parameters.prepass && this.parameters.debugView === 3;
     if (this.canvas.width !== width || this.canvas.height !== height) {

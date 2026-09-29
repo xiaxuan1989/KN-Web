@@ -27,7 +27,7 @@ function halton(index: number, base: number): number {
 // Display-only exposure/bloom edits do not invalidate linear HDR history.
 export function historyKey(p: Parameters, camera: CameraBasis, width: number, height: number): string {
   return JSON.stringify([width, height, p.massSolar, p.spin, p.charge, p.fovDegrees, p.quality,
-    p.frequencyShift, p.backShiftMax, p.backgroundBrightness, p.renderWidth, p.renderHeight, p.prepass, p.debugView, p.background, p.postProcessing, p.taa,
+    p.frequencyShift, p.backShiftMax, p.backgroundBrightness, p.fitWindow, p.renderWidth, p.renderHeight, p.prepass, p.debugView, p.background, p.postProcessing, p.taa,
     camera.position, camera.forward, camera.right, camera.up]);
 }
 

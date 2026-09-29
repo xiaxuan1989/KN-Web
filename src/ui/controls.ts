@@ -14,10 +14,19 @@ export function bindControls(parameters: Parameters): { sync: () => void; dispos
     input.addEventListener('blur', () => { input.value = String(parameters[key]); }, { signal: controller.signal });
     return { input, key };
   });
-  for (const key of ['prepass', 'frequencyShift', 'postProcessing', 'taa', 'bloom'] as const) {
+  const syncSizeControls = (): void => {
+    for (const { input, key } of controls) {
+      if (key === 'renderWidth' || key === 'renderHeight') input.disabled = parameters.fitWindow;
+    }
+  };
+  syncSizeControls();
+  for (const key of ['fitWindow', 'prepass', 'frequencyShift', 'postProcessing', 'taa', 'bloom'] as const) {
     const input = document.querySelector<HTMLInputElement>(`[data-toggle="${key}"]`)!;
     input.checked = parameters[key];
-    input.addEventListener('change', () => { parameters[key] = input.checked; }, { signal: controller.signal });
+    input.addEventListener('change', () => {
+      parameters[key] = input.checked;
+      if (key === 'fitWindow') syncSizeControls();
+    }, { signal: controller.signal });
   }
   const view = document.querySelector<HTMLSelectElement>('#debug-view')!;
   const background = document.querySelector<HTMLSelectElement>('#background')!;

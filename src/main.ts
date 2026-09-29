@@ -24,6 +24,15 @@ const parameters = { ...DEFAULT_PARAMETERS };
 const camera = new Camera();
 const controls = bindControls(parameters);
 const events = new AbortController();
+const panel = document.querySelector<HTMLElement>('#diagnostics-panel')!;
+const panelToggle = document.querySelector<HTMLButtonElement>('#panel-toggle')!;
+function setPanelExpanded(expanded: boolean): void {
+  panel.hidden = !expanded;
+  panelToggle.textContent = expanded ? '收起面板' : '展开面板';
+  panelToggle.setAttribute('aria-expanded', String(expanded));
+}
+setPanelExpanded(true);
+panelToggle.addEventListener('click', () => setPanelExpanded(panel.hidden === true), { signal: events.signal });
 let renderer: Renderer | undefined;
 
 function start(): void {

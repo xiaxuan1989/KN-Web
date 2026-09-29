@@ -11,13 +11,13 @@ body { margin: 0; }
 #gpu-canvas:focus-visible { outline: 2px solid #a8d5ff; outline-offset: -4px; }
 .diagnostics {
   position: relative;
-  margin: 24px;
+  margin: 76px 24px 24px;
   width: min(380px, calc(100% - 48px));
   padding: 24px;
   background: rgb(8 12 21 / 94%);
   border: 1px solid #465067;
   border-radius: 12px;
-  max-height: calc(100dvh - 48px);
+  max-height: calc(100dvh - 100px);
   overflow-y: auto;
 }
 .eyebrow { color: #a8bbd8; font-size: 12px; letter-spacing: .18em; margin: 0 0 16px; }
@@ -34,15 +34,18 @@ button { margin-top: 20px; padding: 10px 16px; border: 1px solid #859cbb; border
 button:hover { background: #30496a; }
 button:disabled { opacity: .5; cursor: wait; }
 button:focus-visible { outline: 2px solid #fff; outline-offset: 4px; }
+.panel-toggle { position: fixed; top: 16px; left: 24px; z-index: 2; margin: 0; }
 .controls { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 12px; margin-top: 20px; font-size: 14px; }
 input, select { min-width: 0; width: 100%; padding: 8px; border: 1px solid #63728b; border-radius: 5px; background: #101c2d; color: inherit; font: inherit; }
 input:focus-visible, select:focus-visible { outline: 2px solid #a8d5ff; outline-offset: 2px; }
+input:disabled { opacity: .5; }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .actions button { font-size: 14px; }
 #verification { color: #bbd9fc; font-size: 14px; line-height: 1.6; }
 .coordinate { position: fixed; right: 24px; bottom: 8px; background: #080c15; padding: 8px 12px; font-size: 14px; }
 @media (max-width: 480px) {
-  .diagnostics { margin: 16px; padding: 20px; width: calc(100% - 32px); max-height: 65dvh; }
+  .panel-toggle { top: 12px; left: 16px; }
+  .diagnostics { margin: 68px 16px 16px; padding: 20px; width: calc(100% - 32px); max-height: min(65dvh, calc(100dvh - 84px)); }
 }
 
 .post-controls { margin-top: 20px; border-top: 1px solid #354055; padding-top: 16px; }
