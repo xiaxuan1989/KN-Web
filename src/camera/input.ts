@@ -9,6 +9,8 @@ export class CameraInput {
   private dragButton: 0 | 2 = 0;
   private lastX = 0;
   private lastY = 0;
+  private readonly touches = new Map<number, { x: number; y: number }>();
+  private touchGesture: { x: number; y: number; distance: number } | null = null;
   private readonly canvas: HTMLCanvasElement;
   private readonly camera: Camera;
 
@@ -36,6 +38,16 @@ export class CameraInput {
     canvas.addEventListener('contextmenu', (event) => event.preventDefault(), options);
     canvas.addEventListener('auxclick', (event) => { if (event.button === 1) event.preventDefault(); }, options);
     canvas.addEventListener('pointerdown', (event) => {
+      if (event.pointerType === 'touch') {
+        if (this.pointer !== null) return;
+        event.preventDefault();
+        canvas.focus({ preventScroll: true });
+        this.touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        canvas.setPointerCapture(event.pointerId);
+        this.rebaseTouches();
+        return;
+      }
+      if (this.touches.size) return;
       if (event.button === 1) {
         event.preventDefault();
         this.clear(false);
@@ -54,6 +66,11 @@ export class CameraInput {
       canvas.setPointerCapture(event.pointerId);
     }, options);
     canvas.addEventListener('pointermove', (event) => {
+      if (this.touches.has(event.pointerId)) {
+        event.preventDefault();
+        this.touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        return;
+      }
       if (event.pointerId !== this.pointer) return;
       // Pointerup fires only when the last mouse button is released. Detect
       // release of our initiating button even when another remains held.
@@ -69,6 +86,16 @@ export class CameraInput {
     }, options);
     for (const type of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) {
       canvas.addEventListener(type, (event) => {
+        if (this.touches.has(event.pointerId)) {
+          if (type !== 'pointerup') { this.clear(); return; }
+          this.updateTouches();
+          this.touches.delete(event.pointerId);
+          if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+          // Fingers lift one at a time: rebase the remaining contact without
+          // discarding the pinch's smooth zoom target or normal release inertia.
+          this.touchGesture = this.measureTouches();
+          return;
+        }
         if (event.pointerId === this.pointer) this.releasePointer();
       }, options);
     }
@@ -86,6 +113,9 @@ export class CameraInput {
   }
 
   update(seconds: number): void {
+    // Consume both pointers together. Processing each event as a complete
+    // gesture makes a symmetric pinch briefly look like a right-button drag.
+    this.updateTouches();
     const axis = (positive: string, negative: string) => Number(this.keys.has(positive)) - Number(this.keys.has(negative));
     this.camera.move(axis('KeyD', 'KeyA'), axis('KeyR', 'KeyF'), axis('KeyW', 'KeyS'), seconds,
       this.keys.has('ShiftLeft') || this.keys.has('ShiftRight'));
@@ -96,6 +126,12 @@ export class CameraInput {
   clear(cancelMotion = true): void {
     this.keys.clear();
     this.releasePointer();
+    const pointers = [...this.touches.keys()];
+    this.touches.clear();
+    this.touchGesture = null;
+    for (const pointer of pointers) {
+      if (this.canvas.hasPointerCapture(pointer)) this.canvas.releasePointerCapture(pointer);
+    }
     if (cancelMotion) this.camera.cancelMotion();
   }
 
@@ -108,5 +144,39 @@ export class CameraInput {
     const pointer = this.pointer;
     this.pointer = null;
     if (pointer !== null && this.canvas.hasPointerCapture(pointer)) this.canvas.releasePointerCapture(pointer);
+  }
+
+  private measureTouches(): { x: number; y: number; distance: number } | null {
+    if (this.touches.size < 1 || this.touches.size > 2) return null;
+    const [a, b] = [...this.touches.values()];
+    return b ? { x: (a.x+b.x)/2, y: (a.y+b.y)/2, distance: Math.hypot(b.x-a.x,b.y-a.y) }
+      : { ...a, distance: 0 };
+  }
+
+  private rebaseTouches(): void {
+    // A new contact starts a gesture at the current pose. Stop previous motion
+    // so a one-finger orbit cannot bleed into a newly started two-finger look.
+    this.camera.cancelMotion();
+    this.touchGesture = this.measureTouches();
+  }
+
+  private updateTouches(): void {
+    const current = this.measureTouches(), previous = this.touchGesture;
+    this.touchGesture = current;
+    if (!current || !previous) return;
+    const dx = current.x-previous.x, dy = current.y-previous.y;
+    if (this.touches.size === 1) {
+      if (this.camera.mode === 'orbit') this.camera.orbit(dx,dy);
+      else this.camera.look(dx,dy);
+      return;
+    }
+    // Match the right mouse button (inactive in free-flight mode).
+    if (this.camera.mode === 'orbit') this.camera.look(dx,dy);
+    if (previous.distance >= 8 && current.distance >= 8) {
+      // Spread by a factor of two -> half the orbit radius. Reuse the wheel's
+      // 1.2-per-notch conversion and its free-flight speed behavior.
+      const notches = Math.log(current.distance/previous.distance)/Math.log(1.2);
+      this.camera.scroll(Math.max(-10,Math.min(10,notches)));
+    }
   }
 }

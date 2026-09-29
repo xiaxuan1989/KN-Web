@@ -19,7 +19,13 @@ fn EncodeTrace(ray: TraceResult) -> PrepassOutput {
     return PrepassOutput(vec4<f32>(0),vec4<f32>(0));
 }
 @fragment
-fn fs_prepass(input: VertexOutput) -> PrepassOutput { return EncodeTrace(TraceScreen(input.uv)); }
+fn fs_prepass(input: VertexOutput) -> PrepassOutput {
+    // Original: gl_FragCoord / iResolution, then TraceRay flips Y.
+    // Resolution is full*0.5, not the rounded attachment extent. Interpolated
+    // triangle UVs would stretch odd-sized (and 1-pixel) targets incorrectly.
+    let uv = input.position.xy/game.resolution;
+    return EncodeTrace(TraceScreen(vec2<f32>(uv.x,1.0-uv.y)));
+}
 
 // Preserve the executable source predicate, including its reversed relationship
 // to the original comment: it only considers two flags in [2.5,3.5].

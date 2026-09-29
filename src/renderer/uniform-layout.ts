@@ -13,6 +13,13 @@ export interface FrameData {
   postProcessing?: boolean;
 }
 
+// NPGS allocates floor(full/2), clamped to 1, but passes full*0.5 as
+// Resolution. Do not substitute the integer attachment size, even at 1x1.
+export function prepassFrame(frame: FrameData): FrameData {
+  return { ...frame, width: frame.width * 0.5, height: frame.height * 0.5,
+    jitter: [0.5 * (frame.jitter?.[0] ?? 0), 0.5 * (frame.jitter?.[1] ?? 0)] };
+}
+
 export class UniformData {
   readonly game = new Float32Array(8);
   readonly gameIntegers = new Uint32Array(this.game.buffer);

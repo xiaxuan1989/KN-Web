@@ -6,6 +6,7 @@ import hdrShader from '../shaders/hdr.wgsl?raw';
 import postShader from '../shaders/post.wgsl?raw';
 import { PostProcessing } from './post-processing.ts';
 import { TemporalState } from './temporal.ts';
+import { prepassFrame } from './uniform-layout.ts';
 import fullscreenShader from '../shaders/fullscreen.wgsl?raw';
 import commonShader from '../shaders/common.wgsl?raw';
 import geometryShader from '../shaders/geometry.wgsl?raw';
@@ -263,11 +264,9 @@ export class Renderer {
 
   private updateUniforms(): void {
     const camera = this.camera.basis();
-    this.uniforms!.data.update({ width: this.canvas.width, height: this.canvas.height,
-      time: this.elapsedTime, deltaTime: this.deltaTime, jitter: this.temporalFrame.jitter, postProcessing: this.postActive }, this.parameters, camera);
-    this.prepassUniforms!.data.update({ width: this.halfSize[0], height: this.halfSize[1],
-      time: this.elapsedTime, deltaTime: this.deltaTime, postProcessing: this.postActive,
-      jitter: [this.temporalFrame.jitter[0]*this.halfSize[0]/this.canvas.width, this.temporalFrame.jitter[1]*this.halfSize[1]/this.canvas.height],
-    }, this.parameters, camera);
+    const frame = { width: this.canvas.width, height: this.canvas.height,
+      time: this.elapsedTime, deltaTime: this.deltaTime, jitter: this.temporalFrame.jitter, postProcessing: this.postActive };
+    this.uniforms!.data.update(frame, this.parameters, camera);
+    this.prepassUniforms!.data.update(prepassFrame(frame), this.parameters, camera);
   }
 }

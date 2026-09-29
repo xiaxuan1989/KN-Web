@@ -16,7 +16,7 @@ npm run dev
 打开 http://127.0.0.1:5173/ 。本地使用支持 WebGPU 的桌面 Chrome / Edge；远程访问需要 HTTPS。
 
 ```sh
-npm test             # 43 项 CPU 测试：相机、输入、uniform、cubemap 与异步加载清理
+npm test             # 53 项 CPU 测试：相机、输入、uniform、cubemap 与异步加载清理
 npm run build        # TypeScript 检查 + Vite 静态构建
 npm run preview      # http://127.0.0.1:4173/
 npm run test:physics # GLSL / WGSL 实际 GPU 对照 + 网格离屏绘制
@@ -24,12 +24,14 @@ npm run test:sky     # 星空像素 / mip 校验 + 三种黑洞与自旋 / Q 对
 npm run test:temporal # NPGS C++ / GLM 时间权重、运动判据和速度对照
 npm run test:post    # 含上述回归 + 生产后处理 GPU 回放 + GLSL TAA / Bloom 对照
 npm run test:spectrum # 含上述回归 + GLSL 颜色频移对照与强频移 HDR 验证
-npm run test:prepass  # 含上述回归 + 8 组半分辨率预计算 / 全分辨率合成 GPU 验证
+npm run test:prepass  # 含上述回归 + 13 组预计算 / 合成场景及原 GLSL 初始采样对照
 ```
 
 `test:physics` 是可选开发验证工具，需要 macOS Metal、Rust/Cargo、Python 3、glslangValidator；不属于前端运行依赖。`test:sky` / `test:post` 另需 Python Pillow；TAA 宿主对照另需 clang++ 和 GLM（当前路径 `/opt/homebrew/include`）。原函数快照位于 `reference/`；星空资产位于 `public/cubemaps/universe0/`，校验清单位于 `reference/universe0.json`。
 
 ## 操作
+
+- 手机触屏：单指拖动对应左键；双指同向拖动对应右键；双指捏合对应滚轮。轨道模式下张开拉近、合拢拉远，可以同时捏合与转动视角。自由模式沿用鼠标规则：单指转向，捏合调整移动速度，双指平移不转向。
 
 - 点击画布聚焦，**T 键切换「轨道绕转 + 独立摆头」与「自由视角」**；面板显示当前模式。编辑参数时不会误触切换，长按 T 不重复切换。
 - 轨道模式（默认）：左键 / WASD 绕黑洞公转，右键只调整摄像机视角，中键平滑回正；绕转保留右键偏移。
@@ -51,14 +53,14 @@ npm run test:prepass  # 含上述回归 + 8 组半分辨率预计算 / 全分辨
 
 ## 验证现状
 
-- 43 项 CPU 测试、TypeScript 和生产构建通过，覆盖轨道 / 摆头、T 切换、自由平移 / 滚转、惯性衰减、平滑回正，以及滚轮距离倍率 / 平滑、朝向保持、自由移动速度与生命周期清理。
+- 53 项 CPU 测试、TypeScript 和生产构建通过，覆盖轨道 / 摆头、T 切换、自由平移 / 滚转、惯性衰减、平滑回正，以及滚轮距离倍率 / 平滑、朝向保持、自由移动速度与生命周期清理。
 - Apple M3 Pro / Metal：23 组GLSL vs WGSL 数值对照、31 条完整追踪探针、108 个六面朝向 / 颜色 / mip 探针、14 张完整管线离屏图通过。
 - 自旋反转的阴影逐像素镜像；固定 a*=0.8 加电荷后阴影缩小；近临界光线展示绕转行为。
 - 16 组后处理图、32 帧原生 GPU 回放通过；TAA 混合 / 重置、HDR 数值、Bloom、曝光、Gamma 与方向校验见 [Phase 6 报告](docs/phase6-post.md)。
 - Bloom 已对齐 `Bloom.comp.glsl` atlas 与 `ColorBlend.frag.glsl` bicubic 重建，移除额外阈值；51 次 HDR 阶段对照在本机逐值一致，最终显示最多相差 1/255，见 [Bloom 对齐记录](docs/bloom-alignment.md)。
 - TAA 已迁移原时间权重、无抖动及运动判据：495 组 C++ / GLM 对照通过，12 个 TAA 帧的 GLSL / WGSL RGB 回读一致；生命周期与 alpha 边界见 [TAA 对齐记录](docs/taa-alignment.md)。
 - 实现边界、原生 GPU 渲染与误差记录见 [Phase 3 报告](docs/phase3-background.md) 和 [Phase 2 迁移报告](docs/phase2-port.md)。
-- 半分辨率流程：8 组 GPU 场景通过，1280×960 测试尺寸下约 2%–2.6% 像素重新追踪；手动插值、状态位选择、边缘判据、HDR / jitter、奇数尺寸及 1×1 均通过校验，见 [预计算迁移记录](docs/prepass-port.md)。
+- 半分辨率流程：13 组 GPU 场景通过，1280×960 测试尺寸下约 2%–2.6% 像素重新追踪；奇数尺寸传参和像素中心采样已对齐；984,009 条初始光线与原 GLSL 回读逐值一致，手动插值、边缘判据及极小尺寸回归通过，见 [预计算迁移记录](docs/prepass-port.md)。
 - **浏览器工具未连接**，ImageBitmap 上传、Canvas 显示、持续帧率、键鼠、resize、热更新与设备恢复仍待浏览器验收。原生 GPU 测试不能替代浏览器宿主测试。
 
 浏览器验收时检查：启动状态与 GPU 参数回读成功；切换三种物理参数组合；拖动和移动引起正常透镜变化；更高 quality 使未收敛区域减少；默认窗口 resize 后输出 / 预计算尺寸与投影比例同步更新，固定模式仍保持指定宽高；切后台后停止移动且返回不跳跃；不支持 WebGPU 时有可读错误和重试入口。
