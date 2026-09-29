@@ -3,6 +3,7 @@ import { Renderer } from './renderer/renderer';
 import { Camera } from './camera/camera.ts';
 import { DEFAULT_PARAMETERS } from './physics/parameters.ts';
 import { bindControls } from './ui/controls.ts';
+import { WEBGPU_REQUIREMENTS } from './renderer/webgpu-support.ts';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#gpu-canvas')!;
 const status = document.querySelector<HTMLParagraphElement>('#status')!;
@@ -21,6 +22,7 @@ const verify = document.querySelector<HTMLButtonElement>('#verify')!;
 const reset = document.querySelector<HTMLButtonElement>('#reset-camera')!;
 const cameraMode = document.querySelector<HTMLElement>('#camera-mode')!;
 const inputHelp = document.querySelector<HTMLElement>('#input-help')!;
+document.querySelector<HTMLElement>('#browser-support')!.textContent = WEBGPU_REQUIREMENTS;
 const parameters = { ...DEFAULT_PARAMETERS };
 const camera = new Camera();
 const controls = bindControls(parameters);

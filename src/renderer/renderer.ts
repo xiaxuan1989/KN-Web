@@ -18,6 +18,7 @@ import { Camera, type CameraMode, type Vec3 } from '../camera/camera.ts';
 import { CameraInput } from '../camera/input.ts';
 import type { Parameters } from '../physics/parameters.ts';
 import { UniformBuffers } from './buffers.ts';
+import { adapterDisplayName, requestWebGPUAdapter, requireWebGPU } from './webgpu-support.ts';
 
 export interface RendererStats {
   width: number;
@@ -79,15 +80,9 @@ export class Renderer {
 
   async start(): Promise<void> {
     try {
-      if (!window.isSecureContext) {
-        throw new Error('WebGPU 需要安全上下文，请使用 localhost 或 HTTPS 打开页面。');
-      }
-      if (!navigator.gpu) {
-        throw new Error('此浏览器未提供 WebGPU。请使用支持 WebGPU 的桌面 Chrome / Edge，并检查硬件加速设置。');
-      }
-      const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
+      const gpu = requireWebGPU(window.isSecureContext, navigator.gpu);
+      const adapter = await requestWebGPUAdapter(gpu, this.loading.signal);
       if (this.disposed) return;
-      if (!adapter) throw new Error('未找到可用 GPUAdapter，请检查浏览器硬件加速与 GPU 驱动。');
 
       const device = await adapter.requestDevice({ label: 'KN Phase 6 device' });
       if (this.disposed) {
@@ -103,10 +98,10 @@ export class Renderer {
       });
 
       const context = this.canvas.getContext('webgpu');
-      if (!context) throw new Error('无法获取 WebGPU Canvas context。');
+      if (!context) throw new Error('当前浏览器无法创建 WebGPU 画布，请更新浏览器与操作系统后重试。');
       this.context = context;
-      const format = navigator.gpu.getPreferredCanvasFormat();
-      context.configure({ device, format, alphaMode: 'opaque' });
+      const format = gpu.getPreferredCanvasFormat();
+      context.configure({ device, format, alphaMode: 'opaque', colorSpace: 'srgb' });
       this.uniforms = new UniformBuffers(device);
       this.prepassUniforms = new UniformBuffers(device);
       this.callbacks.onLoading('正在加载星空 · 0 / 6');
@@ -137,8 +132,7 @@ export class Renderer {
       this.input = new CameraInput(this.canvas, this.camera, this.callbacks.onCameraMode, () => this.parameters.observerMode === -1);
       this.callbacks.onCameraMode(this.camera.mode);
 
-      const info = adapter.info;
-      this.callbacks.onReady(info.description || [info.vendor, info.architecture].filter(Boolean).join(' / ') || 'WebGPU adapter（浏览器未公开型号）');
+      this.callbacks.onReady(adapterDisplayName(adapter));
       this.reportStats(performance.now());
       document.addEventListener('visibilitychange', this.onVisibilityChange);
       if (!document.hidden) this.frameId = requestAnimationFrame(this.frame);

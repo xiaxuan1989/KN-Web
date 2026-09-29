@@ -1,3 +1,5 @@
+import { checkShaderCompilation } from './webgpu-support.ts';
+
 export class ScenePasses {
   readonly prepassLayout: GPUBindGroupLayout;
   private readonly device: GPUDevice;
@@ -16,9 +18,7 @@ export class ScenePasses {
   static async create(device: GPUDevice, uniforms: GPUBindGroupLayout, background: GPUBindGroupLayout, code: string): Promise<ScenePasses> {
     const scene = new ScenePasses(device);
     const module = device.createShaderModule({ label: 'NPGS prepass / composite / full trace', code });
-    const info = await module.getCompilationInfo();
-    const errors = info.messages.filter(m => m.type === 'error');
-    if (errors.length) throw new Error(errors.map(m => `WGSL ${m.lineNum}:${m.linePos} ${m.message}`).join('\n'));
+    await checkShaderCompilation(module, 'WGSL');
     const configs = [
       { entry: 'fs_main', layouts: [uniforms,background], formats: ['rgba16float'] },
       { entry: 'fs_prepass', layouts: [uniforms], formats: ['rgba32float','rgba16float'] },

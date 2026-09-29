@@ -1,4 +1,5 @@
 import type { Parameters } from '../physics/parameters.ts';
+import { checkShaderCompilation } from './webgpu-support.ts';
 
 type PassName = 'taa' | 'bloom_atlas' | 'blur_h' | 'blur_v' | 'present';
 
@@ -36,9 +37,7 @@ export class PostProcessing {
     const post = new PostProcessing(device);
     try {
       const module = device.createShaderModule({ label: 'TAA / Bloom / NPGS display mapping', code });
-      const info = await module.getCompilationInfo();
-      const errors = info.messages.filter(message => message.type === 'error');
-      if (errors.length) throw new Error(errors.map(m => `Post WGSL ${m.lineNum}:${m.linePos} ${m.message}`).join('\n'));
+      await checkShaderCompilation(module, 'Post WGSL');
       const layout = device.createPipelineLayout({ bindGroupLayouts: [post.layout] });
       const entries: PassName[] = ['taa', 'bloom_atlas', 'blur_h', 'blur_v', 'present'];
       // Finish all pending pipeline builds even if one fails before releasing resources.
