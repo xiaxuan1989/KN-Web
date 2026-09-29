@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="KN 黑洞 WebGPU 渲染 · 科普交互演示" />
+    <title>KN · WebGPU</title>
+  </head>
+  <body>
+    <main>
+      <canvas id="gpu-canvas" tabindex="0" aria-label="相机预览，点击聚焦后按 T 切换轨道与自由视角" aria-describedby="input-help camera-mode"></canvas>
+      <section class="diagnostics" aria-labelledby="title">
+        <p class="eyebrow">KN / WEBGPU</p>
+        <h1 id="title">Kerr-Newman 黑洞 <span>引力透镜</span></h1>
+        <p id="status" role="status" aria-live="polite">正在初始化 WebGPU…</p>
+        <dl>
+          <div><dt>GPU</dt><dd id="adapter">等待设备</dd></div>
+          <div><dt>输出</dt><dd id="resolution">—</dd></div>
+          <div><dt>预计算</dt><dd id="prepass-resolution">—</dd></div>
+          <div><dt>FPS</dt><dd id="fps">—</dd></div>
+          <div><dt>TAA 累积</dt><dd id="taa-samples">—</dd></div>
+          <div><dt>运行时间</dt><dd id="elapsed">—</dd></div>
+          <div><dt>位置 / Rs</dt><dd id="position">—</dd></div>
+          <div><dt>方向</dt><dd id="direction">—</dd></div>
+          <div><dt>相机模式</dt><dd id="camera-mode" role="status" aria-live="polite">轨道模式</dd></div>
+        </dl>
+        <div class="controls">
+          <label for="debug-view">预览</label>
+          <select id="debug-view">
+            <option value="3">KN 引力透镜</option>
+            <option value="5">原背景（无引力）</option>
+            <option value="4">积分步数 / 终止状态</option>
+            <option value="1">相机方向 + 参考网格</option>
+            <option value="2">参数颜色（M / a* / Q*）</option>
+            <option value="0">UV 渐变</option>
+          </select>
+          <label for="background">背景</label>
+          <select id="background">
+            <option value="sky">原项目星空 · Universe 0</option>
+            <option value="grid">方向网格</option>
+          </select>
+          <label for="preset">黑洞预设</label>
+          <select id="preset">
+            <option value="schwarzschild">Schwarzschild · 0 / 0</option>
+            <option value="kerr">Kerr · 0.95 / 0</option>
+            <option value="kn">Kerr–Newman · 0.8 / 0.4</option>
+            <option value="custom">自定义 a* / Q*</option>
+          </select>
+          <label for="mass">质量 M / M☉</label><input id="mass" data-parameter="massSolar" type="number" step="any" />
+          <label for="spin">自旋 a*</label><input id="spin" data-parameter="spin" type="number" step="0.01" />
+          <label for="charge">电荷 Q*</label><input id="charge" data-parameter="charge" type="number" step="0.01" />
+          <label for="frequency-shift">颜色频移</label><input id="frequency-shift" data-toggle="frequencyShift" type="checkbox" />
+          <label for="back-shift-max">频移上限</label><input id="back-shift-max" data-parameter="backShiftMax" type="number" step="0.1" />
+          <label for="background-brightness">背景亮度倍率</label><input id="background-brightness" data-parameter="backgroundBrightness" type="number" step="0.1" />
+          <label for="fov">水平 FOV / °</label><input id="fov" data-parameter="fovDegrees" type="number" step="1" />
+          <label for="quality">质量系数</label><input id="quality" data-parameter="quality" type="number" step="0.25" />
+          <label for="render-width">输出宽度 / px</label><input id="render-width" data-parameter="renderWidth" type="number" step="1" />
+          <label for="render-height">输出高度 / px</label><input id="render-height" data-parameter="renderHeight" type="number" step="1" />
+          <label for="prepass-enabled">半分辨率预计算</label><input id="prepass-enabled" data-toggle="prepass" type="checkbox" />
+        </div>
+        <details class="post-controls" open>
+          <summary>后处理</summary>
+          <div class="controls">
+            <label for="post-enabled">启用后处理</label><input id="post-enabled" data-toggle="postProcessing" type="checkbox" />
+            <label for="taa-enabled">TAA 抗锯齿</label><input id="taa-enabled" data-toggle="taa" type="checkbox" />
+            <label for="bloom-enabled">Bloom 泛光</label><input id="bloom-enabled" data-toggle="bloom" type="checkbox" />
+            <label for="exposure">曝光 / EV</label><input id="exposure" data-parameter="exposure" type="number" step="0.25" />
+            <label for="gamma">Gamma</label><input id="gamma" data-parameter="gamma" type="number" step="0.1" />
+            <label for="bloom-strength">泛光强度</label><input id="bloom-strength" data-parameter="bloomStrength" type="number" step="0.01" />
+            <label for="bloom-threshold">泛光阈值</label><input id="bloom-threshold" data-parameter="bloomThreshold" type="number" step="0.1" />
+          </div>
+          <p class="note">静止时逐帧积累；移动相机或改变场景会重新积累。关闭后处理可对照原图，诊断视图保持原色。</p>
+        </details>
+        <div class="actions">
+          <button id="reset-camera" type="button">重置相机</button>
+          <button id="verify" type="button" disabled>校验 GPU 参数</button>
+        </div>
+        <p id="verification" role="status" aria-live="polite">等待 GPU 回读</p>
+        <p class="note" id="input-help">点击画布后，T 切换自由视角。左键 / WASD 绕黑洞转，右键独立摆头，松手后惯性滑停；中键平滑回正，滚轮拉近 / 拉远黑洞，FOV 不变。</p>
+        <p class="note">沿 NPGS 零测地线追踪至 Universe 0 星空。切换「原背景」比较透镜畸变，切换「方向网格」观察临界曲线附近的多重成像。当前为外部静态观者，无吸积盘。颜色频移采用原项目映射；关闭可对照贴图原色，背景亮度倍率仅在开启时生效。</p>
+        <p class="note">捕获区为黑色（星空本身也有暗区，可用积分状态视图区分）；橙色：积分预算耗尽或未收敛；紫色：观者 / 参数超出本阶段范围或数值异常。仅支持 a*² + Q*² ≤ 1，且相机位于外部静态区。</p>
+        <p class="note">默认 1280×960 输出、640×480 预计算。关闭预计算可对照全分辨率追踪；每条光线仍最多 1024 步。距离用 Rs 归一化，固定相机 Rs 坐标时，单独改变太阳质量不会改变透镜形状。</p>
+        <button id="retry" type="button" hidden>重新初始化</button>
+      </section>
+      <p class="coordinate">+Y ↑ · 空间单位 Rs</p>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

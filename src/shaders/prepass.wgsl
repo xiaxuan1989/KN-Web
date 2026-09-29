@@ -1,0 +1,100 @@
+// NPGS BlackHole_prepass / BlackHole_composite. Native statuses are Sky=1,
+// Captured=0, Opaque=3. Web-only diagnostic states use negative flags.
+@group(2) @binding(0) var prepassDistortion: texture_2d<f32>;
+@group(2) @binding(1) var prepassVolumetric: texture_2d<f32>;
+struct PrepassOutput {
+    @location(0) distortion: vec4<f32>,
+    @location(1) volumetric: vec4<f32>,
+};
+fn TraceScreen(uv: vec2<f32>) -> TraceResult {
+    return TraceRay(camera.position.xyz,ScreenDirection(uv),blackHole.spin,blackHole.charge,game.quality);
+}
+fn EncodeTrace(ray: TraceResult) -> PrepassOutput {
+    if (ray.status == TRACE_ESCAPED) {
+        let shift = BackgroundFrequencyShift(ray.energy,blackHole.backShiftMax);
+        return PrepassOutput(vec4<f32>(ray.direction*shift,1),vec4<f32>(0));
+    }
+    if (ray.status == TRACE_INVALID) { return PrepassOutput(vec4<f32>(0,0,0,-2),vec4<f32>(0)); }
+    if (ray.status == TRACE_UNRESOLVED) { return PrepassOutput(vec4<f32>(0,0,0,-1),vec4<f32>(0)); }
+    return PrepassOutput(vec4<f32>(0),vec4<f32>(0));
+}
+@fragment
+fn fs_prepass(input: VertexOutput) -> PrepassOutput { return EncodeTrace(TraceScreen(input.uv)); }
+
+// Preserve the executable source predicate, including its reversed relationship
+// to the original comment: it only considers two flags in [2.5,3.5].
+fn IsSensitiveBoundary(a: f32,b: f32) -> bool {
+    if ((a < 2.5 || a > 3.5) || (b < 2.5 || b > 3.5)) { return false; }
+    return abs(a-b) > 0.1;
+}
+fn GeometryEdge(center: vec4<f32>,neighbor: vec4<f32>) -> bool {
+    let flag = round(center.w);
+    if (flag >= 2.5 && flag <= 3.5) { return false; }
+    return dot(normalize(center.xyz+vec3<f32>(1e-6)),normalize(neighbor.xyz+vec3<f32>(1e-6))) < 0.99;
+}
+// Explicitly clamp all texelFetch equivalents at borders (GLSL out-of-range
+// texelFetch is undefined). Float32 direction/status data is never hardware-filtered.
+fn PrepassCoord(p: vec2<i32>) -> vec2<i32> {
+    return clamp(p,vec2<i32>(0),vec2<i32>(textureDimensions(prepassDistortion))-vec2<i32>(1));
+}
+fn DistortionAt(p: vec2<i32>) -> vec4<f32> { return textureLoad(prepassDistortion,PrepassCoord(p),0); }
+fn VolumeAt(p: vec2<i32>) -> vec4<f32> { return textureLoad(prepassVolumetric,PrepassCoord(p),0); }
+fn ManualBilinearSample(uv: vec2<f32>) -> PrepassOutput {
+    let pixel = uv*vec2<f32>(textureDimensions(prepassDistortion))-0.5;
+    let p = vec2<i32>(floor(pixel));
+    let f = fract(pixel);
+    let d00 = DistortionAt(p); let d10 = DistortionAt(p+vec2<i32>(1,0));
+    let d01 = DistortionAt(p+vec2<i32>(0,1)); let d11 = DistortionAt(p+vec2<i32>(1,1));
+    let distortion = mix(mix(d00.xyz,d10.xyz,f.x),mix(d01.xyz,d11.xyz,f.x),f.y);
+    let volume = mix(mix(VolumeAt(p),VolumeAt(p+vec2<i32>(1,0)),f.x),
+        mix(VolumeAt(p+vec2<i32>(0,1)),VolumeAt(p+vec2<i32>(1,1)),f.x),f.y);
+    var flag = d00.w; var weight = (1.0-f.x)*(1.0-f.y);
+    if (f.x*(1.0-f.y) > weight) { weight = f.x*(1.0-f.y); flag = d10.w; }
+    if ((1.0-f.x)*f.y > weight) { weight = (1.0-f.x)*f.y; flag = d01.w; }
+    if (f.x*f.y > weight) { flag = d11.w; }
+    return PrepassOutput(vec4<f32>(distortion,flag),volume);
+}
+fn NeedsRetrace(uv: vec2<f32>) -> bool {
+    let p = vec2<i32>(floor(uv*vec2<f32>(textureDimensions(prepassDistortion))));
+    let center = DistortionAt(p);
+    let neighbors = array<vec4<f32>,4>(DistortionAt(p+vec2<i32>(-1,0)),DistortionAt(p+vec2<i32>(1,0)),
+        DistortionAt(p+vec2<i32>(0,-1)),DistortionAt(p+vec2<i32>(0,1)));
+    if (center.w < 0.0) { return true; }
+    for (var i=0u; i<4u; i++) {
+        if (neighbors[i].w < 0.0 || IsSensitiveBoundary(round(center.w),round(neighbors[i].w)) || GeometryEdge(center,neighbors[i])) { return true; }
+    }
+    return false;
+}
+@fragment
+fn fs_composite(input: VertexOutput) -> @location(0) vec4<f32> {
+    // Framebuffer texels are top-left origin; camera UVs remain bottom-left.
+    let textureUv = input.position.xy/game.resolution;
+    var data: PrepassOutput;
+    var direction = vec3<f32>(0);
+    var shift = 0.0;
+    if (NeedsRetrace(textureUv)) {
+        let ray = TraceScreen(input.uv);
+        data = EncodeTrace(ray);
+        if (ray.status == TRACE_ESCAPED) {
+            direction = ray.direction;
+            shift = BackgroundFrequencyShift(ray.energy,blackHole.backShiftMax);
+        }
+    } else {
+        data = ManualBilinearSample(textureUv);
+        shift = length(data.distortion.xyz);
+        direction = data.distortion.xyz/(shift+1e-9);
+    }
+    let status = data.distortion.w;
+    let isSky = (status > 0.5 && status < 2.5) || status > 3.5;
+    let sampleDirection = select(ScreenDirection(input.uv),direction,isSky && shift > 1e-9);
+    // Derivatives are evaluated after divergent retracing reconverges.
+    let sky = textureSample(background,backgroundSampler,sampleDirection);
+    if (status < -1.5) { return vec4<f32>(0.38,0.05,0.28,select(1.0,0.0,game.postEnabled > 0.5)); }
+    if (status < -0.5) { return vec4<f32>(0.55,0.19,0.015,select(1.0,0.0,game.postEnabled > 0.5)); }
+    var color = data.volumetric;
+    if (color.a < 0.99 && isSky) {
+        let invAlpha = 1.0-color.a;
+        color += 0.9999999*MapBackground(sky,shift)*vec4<f32>(pow(invAlpha,1.0),pow(invAlpha,1.6),pow(invAlpha,2.5),1);
+    }
+    return SceneColor(color,select(1.0,shift,blackHole.frequencyShift > 0.5));
+}

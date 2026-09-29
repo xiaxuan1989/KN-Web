@@ -1,0 +1,50 @@
+:root {
+  font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
+  color: #f2f5ff;
+  background: #080c15;
+  font-synthesis: none;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+#gpu-canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; object-fit: contain; }
+#gpu-canvas:focus-visible { outline: 2px solid #a8d5ff; outline-offset: -4px; }
+.diagnostics {
+  position: relative;
+  margin: 24px;
+  width: min(380px, calc(100% - 48px));
+  padding: 24px;
+  background: rgb(8 12 21 / 94%);
+  border: 1px solid #465067;
+  border-radius: 12px;
+  max-height: calc(100dvh - 48px);
+  overflow-y: auto;
+}
+.eyebrow { color: #a8bbd8; font-size: 12px; letter-spacing: .18em; margin: 0 0 16px; }
+h1 { font-size: 21px; font-weight: 600; margin: 0 0 16px; }
+h1 span { font-size: 14px; color: #a8bbd8; margin-left: 8px; white-space: nowrap; }
+#status { font-size: 16px; line-height: 1.6; margin: 0 0 20px; overflow-wrap: anywhere; }
+#status[data-state="error"] { color: #ffb9b9; }
+dl { margin: 0; font-size: 14px; }
+dl div { display: grid; grid-template-columns: 80px 1fr; gap: 12px; margin-top: 10px; }
+dt { color: #a8bbd8; }
+dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.note { border-top: 1px solid #354055; padding-top: 16px; margin: 20px 0 0; color: #a8bbd8; font-size: 14px; line-height: 1.7; }
+button { margin-top: 20px; padding: 10px 16px; border: 1px solid #859cbb; border-radius: 6px; background: #1c2e46; color: inherit; font: inherit; cursor: pointer; }
+button:hover { background: #30496a; }
+button:disabled { opacity: .5; cursor: wait; }
+button:focus-visible { outline: 2px solid #fff; outline-offset: 4px; }
+.controls { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 12px; margin-top: 20px; font-size: 14px; }
+input, select { min-width: 0; width: 100%; padding: 8px; border: 1px solid #63728b; border-radius: 5px; background: #101c2d; color: inherit; font: inherit; }
+input:focus-visible, select:focus-visible { outline: 2px solid #a8d5ff; outline-offset: 2px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.actions button { font-size: 14px; }
+#verification { color: #bbd9fc; font-size: 14px; line-height: 1.6; }
+.coordinate { position: fixed; right: 24px; bottom: 8px; background: #080c15; padding: 8px 12px; font-size: 14px; }
+@media (max-width: 480px) {
+  .diagnostics { margin: 16px; padding: 20px; width: calc(100% - 32px); max-height: 65dvh; }
+}
+
+.post-controls { margin-top: 20px; border-top: 1px solid #354055; padding-top: 16px; }
+.post-controls summary { cursor: pointer; color: #bbd9fc; }
+input[type="checkbox"] { width: 20px; height: 20px; margin: 0; accent-color: #a8d5ff; }

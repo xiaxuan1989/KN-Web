@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.DS_Store
+*.local
+tools/physics-check/target/
+tests/generated/
+docs/
+reference/
+tests/
+tools/
+梗概.md
+计划.md
