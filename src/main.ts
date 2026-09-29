@@ -9,7 +9,7 @@ const status = document.querySelector<HTMLParagraphElement>('#status')!;
 const adapter = document.querySelector<HTMLElement>('#adapter')!;
 const prepassResolution = document.querySelector<HTMLElement>('#prepass-resolution')!;
 const resolution = document.querySelector<HTMLElement>('#resolution')!;
-const taaSamples = document.querySelector<HTMLElement>('#taa-samples')!;
+const taaWeight = document.querySelector<HTMLElement>('#taa-weight')!;
 const fps = document.querySelector<HTMLElement>('#fps')!;
 const retry = document.querySelector<HTMLButtonElement>('#retry')!;
 const position = document.querySelector<HTMLElement>('#position')!;
@@ -43,7 +43,7 @@ function start(): void {
   resolution.textContent = '—';
   prepassResolution.textContent = '—';
   fps.textContent = '—';
-  taaSamples.textContent = '—';
+  taaWeight.textContent = '—';
   retry.hidden = true;
   verify.disabled = true;
   verification.textContent = '等待 GPU 回读';
@@ -60,7 +60,7 @@ function start(): void {
       resolution.textContent = `${stats.width} × ${stats.height}`;
       prepassResolution.textContent = stats.prepassEnabled ? `${stats.prepassWidth} × ${stats.prepassHeight}` : '关闭 · 全分辨率追踪';
       fps.textContent = stats.fps === null ? '—' : stats.fps.toFixed(1);
-      taaSamples.textContent = stats.temporalSamples ? `${stats.temporalSamples} / 32` : '关闭';
+      taaWeight.textContent = stats.temporalWeight === null ? '关闭' : `${(stats.temporalWeight*100).toFixed(2)}% 当前帧`;
       position.textContent = stats.position.map((value) => value.toFixed(2)).join(', ');
       direction.textContent = stats.direction.map((value) => value.toFixed(3)).join(', ');
       elapsed.textContent = `${stats.time.toFixed(1)} s`;

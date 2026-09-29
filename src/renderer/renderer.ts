@@ -5,7 +5,7 @@ import spectrumShader from '../shaders/spectrum.wgsl?raw';
 import hdrShader from '../shaders/hdr.wgsl?raw';
 import postShader from '../shaders/post.wgsl?raw';
 import { PostProcessing } from './post-processing.ts';
-import { TemporalState, historyKey } from './temporal.ts';
+import { TemporalState } from './temporal.ts';
 import fullscreenShader from '../shaders/fullscreen.wgsl?raw';
 import commonShader from '../shaders/common.wgsl?raw';
 import geometryShader from '../shaders/geometry.wgsl?raw';
@@ -24,7 +24,7 @@ export interface RendererStats {
   prepassHeight: number;
   prepassEnabled: boolean;
   fps: number | null;
-  temporalSamples: number;
+  temporalWeight: number | null;
   time: number;
   position: Vec3;
   direction: Vec3;
@@ -54,6 +54,7 @@ export class Renderer {
   private lastFrameTime?: number;
   private elapsedTime = 0;
   private deltaTime = 0;
+  private realDeltaTime = 0;
   private uniforms?: UniformBuffers;
   private background?: Background;
   private input?: CameraInput;
@@ -61,7 +62,7 @@ export class Renderer {
   private readonly loading = new AbortController();
   private post?: PostProcessing;
   private readonly temporal = new TemporalState();
-  private temporalFrame = { weight: 1, jitter: [0, 0] as [number, number], samples: 1 };
+  private temporalFrame = { weight: 1, jitter: [0, 0] as [number, number] };
   private postActive = false;
 
   constructor(
@@ -204,7 +205,8 @@ export class Renderer {
         this.fpsElapsedMs += time - this.lastFrameTime;
         this.fpsFrames += 1;
       }
-      this.deltaTime = this.lastFrameTime === undefined ? 0 : Math.min(0.05, Math.max(0, (time - this.lastFrameTime) / 1000));
+      this.realDeltaTime = this.lastFrameTime === undefined ? 0 : Math.max(0, (time - this.lastFrameTime) / 1000);
+      this.deltaTime = Math.min(0.05,this.realDeltaTime);
       this.lastFrameTime = time;
       this.elapsedTime += this.deltaTime;
       this.input?.update(this.deltaTime);
@@ -229,10 +231,11 @@ export class Renderer {
       this.canvas.width = width;
       this.canvas.height = height;
     }
-    if (this.post!.resize(width, height)) this.temporal.reset();
+    this.post!.resize(width, height);
     this.scene!.resize(...half);
     this.postActive = this.parameters.postProcessing && (this.parameters.debugView === 3 || this.parameters.debugView === 5);
-    this.temporalFrame = this.temporal.next(historyKey(this.parameters, this.camera.basis(), width, height), this.postActive && this.parameters.taa);
+    this.temporalFrame = this.temporal.next(this.camera.basis(),this.parameters.massSolar,this.parameters.timeRate,
+      this.realDeltaTime,this.postActive && this.parameters.taa);
     this.updateUniforms();
     this.uniforms!.upload();
     this.prepassUniforms!.upload();
@@ -251,7 +254,7 @@ export class Renderer {
       width: this.canvas.width, height: this.canvas.height,
       prepassWidth: this.halfSize[0], prepassHeight: this.halfSize[1], prepassEnabled: this.usePrepass,
       fps: this.fpsElapsedMs > 0 ? this.fpsFrames * 1000 / this.fpsElapsedMs : null,
-      temporalSamples: this.postActive && this.parameters.taa ? this.temporalFrame.samples : 0,
+      temporalWeight: this.postActive && this.parameters.taa ? this.temporalFrame.weight : null,
       time: this.elapsedTime, position: basis.position, direction: basis.forward,
     });
     this.fpsFrames = 0;

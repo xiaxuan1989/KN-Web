@@ -6,6 +6,7 @@ export interface Parameters {
   backgroundBrightness: number;
   postProcessing: boolean;
   taa: boolean;
+  timeRate: number;
   bloom: boolean;
   exposure: number;
   gamma: number;
@@ -27,7 +28,7 @@ export interface Parameters {
 // Positions are in Rs; the later geometry port will use CONST_M = 0.5.
 export const DEFAULT_PARAMETERS: Readonly<Parameters> = Object.freeze({
   frequencyShift: true, backShiftMax: 1.5, backgroundBrightness: 2,
-  postProcessing: true, taa: true, bloom: true,
+  postProcessing: true, taa: true, timeRate: 1, bloom: true,
   exposure: 0, gamma: 2.2, bloomStrength: 0.08,
   background: 'sky',
   massSolar: 4_000_000,
@@ -42,6 +43,7 @@ export const DEFAULT_PARAMETERS: Readonly<Parameters> = Object.freeze({
 export const PARAMETER_LIMITS = {
   backShiftMax: [1, 16],
   backgroundBrightness: [0, 100],
+  timeRate: [-1e6, 1e6],
   exposure: [-8, 8],
   gamma: [1, 3],
   bloomStrength: [0, 0.5],

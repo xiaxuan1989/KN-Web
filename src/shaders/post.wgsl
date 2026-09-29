@@ -20,8 +20,7 @@ fn taa(input: PostVertex) -> @location(0) vec4<f32> {
     let current = textureLoad(source,pixel,0);
     if (post.temporal.x >= 1.0 || current.a < 0.5) { return current; }
     let previous = textureLoad(auxiliary,pixel,0);
-    if (previous.a < 0.5) { return current; }
-    return vec4<f32>(mix(previous.rgb,current.rgb,post.temporal.x),current.a);
+    return vec4<f32>(post.temporal.x*current.rgb+(1.0-post.temporal.x)*previous.rgb,current.a);
 }
 // NPGS Bloom.comp.glsl. All atlas passes use the full output dimensions.
 fn ColorFetch(uv: vec2<f32>) -> vec3<f32> {

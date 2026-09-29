@@ -14,6 +14,7 @@ export class PostProcessing {
   private history: GPUTexture[] = [];
   private bloomTargets: GPUTexture[] = [];
   private index = 0;
+  private historyActive = false;
   private width = 0;
   private height = 0;
   scene!: GPUTexture;
@@ -70,6 +71,9 @@ export class PostProcessing {
   }
 
   encode(encoder: GPUCommandEncoder, target: GPUTextureView, p: Parameters, weight: number, active: boolean): void {
+    const temporal = active && p.taa;
+    if (temporal && !this.historyActive) weight = 1;
+    this.historyActive = temporal;
     const bloom = active && p.bloom && p.bloomStrength > 0;
     this.device.queue.writeBuffer(this.uniform, 0, new Float32Array([
       p.exposure, p.gamma, p.bloomStrength, 0, weight, 0, Number(bloom), Number(active),
