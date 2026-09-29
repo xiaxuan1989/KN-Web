@@ -1,5 +1,6 @@
 // NPGS BlackHole_prepass / BlackHole_composite. Native statuses are Sky=1,
-// Captured=0, Opaque=3. Web-only diagnostic states use negative flags.
+// Absorbed/Lost=0, Opaque=3. Unsupported observers / numerical failures retain
+// the Web-only diagnostic flag -2; exhausted and bound rays use native 0.
 @group(2) @binding(0) var prepassDistortion: texture_2d<f32>;
 @group(2) @binding(1) var prepassVolumetric: texture_2d<f32>;
 struct PrepassOutput {
@@ -15,7 +16,6 @@ fn EncodeTrace(ray: TraceResult) -> PrepassOutput {
         return PrepassOutput(vec4<f32>(ray.direction*shift,1),vec4<f32>(0));
     }
     if (ray.status == TRACE_INVALID) { return PrepassOutput(vec4<f32>(0,0,0,-2),vec4<f32>(0)); }
-    if (ray.status == TRACE_UNRESOLVED) { return PrepassOutput(vec4<f32>(0,0,0,-1),vec4<f32>(0)); }
     return PrepassOutput(vec4<f32>(0),vec4<f32>(0));
 }
 @fragment
@@ -96,7 +96,6 @@ fn fs_composite(input: VertexOutput) -> @location(0) vec4<f32> {
     // Derivatives are evaluated after divergent retracing reconverges.
     let sky = textureSample(background,backgroundSampler,sampleDirection);
     if (status < -1.5) { return vec4<f32>(0.38,0.05,0.28,select(1.0,0.0,game.postEnabled > 0.5)); }
-    if (status < -0.5) { return vec4<f32>(0.55,0.19,0.015,select(1.0,0.0,game.postEnabled > 0.5)); }
     var color = data.volumetric;
     if (color.a < 0.99 && isSky) {
         let invAlpha = 1.0-color.a;

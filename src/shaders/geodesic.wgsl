@@ -1,10 +1,9 @@
 // Exterior/static/no-disk slice of NPGS TraceRay. See docs/phase2-port.md
-// for host safety limits and deliberately deferred features.
+// for the supported observer domain and deliberately deferred features.
 const TRACE_BOUNDARY: f32 = 501.0;
-const MAX_TRACE_STEPS: u32 = 1024u;
-const TRACE_CAPTURED: u32 = 0u;
+// Native 0 = Absorbed/Lost: includes horizon stops, exhausted budget and bound rays.
+const TRACE_STOPPED: u32 = 0u;
 const TRACE_ESCAPED: u32 = 1u;
-const TRACE_UNRESOLVED: u32 = 2u;
 const TRACE_INVALID: u32 = 3u;
 
 struct TraceResult {
@@ -32,8 +31,17 @@ fn ProgradePhotonRadius(spin: f32, Q: f32) -> f32 {
     return r;
 }
 
+// BlackHole_common.glsl:4847,4903. Positive-r BH branch (Whitehole=0).
+fn TraceMaxStep(spin: f32, charge: f32) -> f32 {
+    let extremality = 1.0-spin*spin-charge*charge;
+    return 150.0 + 300.0/(1.0+1000.0*extremality*extremality);
+}
+fn TraceStepBudget(spin: f32, charge: f32, quality: f32) -> u32 {
+    return u32(TraceMaxStep(spin,charge)*quality*(1.0+0.3*quality));
+}
+
 fn TraceRay(origin: vec3<f32>, direction: vec3<f32>, spin: f32, charge: f32, quality: f32) -> TraceResult {
-    var result = TraceResult(vec3<f32>(0.0), TRACE_UNRESOLVED, 0u, 0.0, 1.0);
+    var result = TraceResult(vec3<f32>(0.0), TRACE_STOPPED, 0u, 0.0, 1.0);
     let a = spin*CONST_M;
     let Q = charge*CONST_M;
     let discriminant = 0.25-a*a-Q*Q;
@@ -64,13 +72,13 @@ fn TraceRay(origin: vec3<f32>, direction: vec3<f32>, spin: f32, charge: f32, qua
     result.energy = E;
     let shellLimit = ProgradePhotonRadius(spin, Q)-0.001;
     let pruningCeiling = min(min(cameraR-0.001, outer+0.2), shellLimit);
-    let extremality = 1.0-spin*spin-charge*charge;
-    let maxStep = 150.0 + 300.0/(1.0+1000.0*extremality*extremality);
-    let originalLimit = u32(maxStep*quality*(1.0+0.3*quality));
+    let originalLimit = TraceStepBudget(spin,charge,quality);
     var lastDr = 0.0;
     var turningCount = 0u;
 
-    for (var count = 0u; count < MAX_TRACE_STEPS; count++) {
+    // Keep the original strict Count > budget check below, after escape/horizon.
+    // Thus budget+1 RK steps are allowed; there is no additional Web step cap.
+    for (var count = 0u; ; count++) {
         result.steps = count;
         let distance = length(state.X.xyz);
         if (distance > TRACE_BOUNDARY) {
@@ -81,7 +89,7 @@ fn TraceRay(origin: vec3<f32>, direction: vec3<f32>, spin: f32, charge: f32, qua
             result.status = TRACE_ESCAPED;
             return result;
         }
-        if (geo.r < outer) { result.status = TRACE_CAPTURED; return result; }
+        if (geo.r < outer) { result.status = TRACE_STOPPED; return result; }
         if (count > originalLimit) { return result; }
 
         var k1 = GetDerivativesAnalytic(state, a, Q, fade, outgoing, geo);
@@ -104,7 +112,7 @@ fn TraceRay(origin: vec3<f32>, direction: vec3<f32>, spin: f32, charge: f32, qua
         lastDr = currentDr;
         if (turningCount > 2u) { return result; }
         if (geo.r < pruningCeiling && currentDr > 1e-4) {
-            result.status = TRACE_CAPTURED; return result;
+            result.status = TRACE_STOPPED; return result;
         }
 
         let rho = length(state.X.xz);
@@ -128,23 +136,23 @@ fn TraceRay(origin: vec3<f32>, direction: vec3<f32>, spin: f32, charge: f32, qua
             let factor = 0.5/spin;
             let dangerous = 10000.0*max(1.0, factor*factor*factor);
             if (RaiseIndex(state.P, geo).w > dangerous*quality) {
-                result.status = TRACE_CAPTURED; return result;
+                result.status = TRACE_STOPPED; return result;
             }
         }
         let previous = state;
         state = StepGeodesicRK4_Optimized(state, E, -dLambda/quality, a, Q, fade, 1.0, outgoing, k1);
+        result.steps = count+1u;
         // Float32 guard: test exponent bits rather than relying on NaN math.
         if (any((bitcast<vec4<u32>>(state.X) & vec4<u32>(0x7f800000u)) == vec4<u32>(0x7f800000u)) ||
             any((bitcast<vec4<u32>>(state.P) & vec4<u32>(0x7f800000u)) == vec4<u32>(0x7f800000u))) {
             result.status = TRACE_INVALID; return result;
         }
         if (GetIntermediateSign(previous.X, state.X, 1.0, a) < 0.0) {
-            result.status = TRACE_CAPTURED; return result;
+            result.status = TRACE_STOPPED; return result;
         }
         geo = ComputeGeometryScalars(state.X.xyz, a, Q, fade, 1.0, outgoing);
         result.nullError = abs(dot(state.P, RaiseIndex(state.P, geo)))/(dot(state.P, state.P)+1e-20);
-        if (geo.r < outer) { result.status = TRACE_CAPTURED; return result; }
+        if (geo.r < outer) { result.status = TRACE_STOPPED; return result; }
     }
-    result.steps = MAX_TRACE_STEPS;
     return result;
 }

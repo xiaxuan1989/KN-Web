@@ -53,14 +53,11 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     if (game.debugView == 3u || game.debugView == 4u) {
         if (traced.status == TRACE_INVALID) { return vec4<f32>(0.38, 0.05, 0.28, select(1.0,0.0,game.postEnabled > 0.5)); }
         if (game.debugView == 4u) {
-            if (traced.status == TRACE_CAPTURED) { return vec4<f32>(0.0, 0.0, 0.0, 1.0); }
-            if (traced.status == TRACE_UNRESOLVED) { return vec4<f32>(1.0, 0.4, 0.05, 1.0); }
+            if (traced.status == TRACE_STOPPED) { return vec4<f32>(0.0, 0.0, 0.0, 1.0); }
             let heat = clamp(f32(traced.steps)/300.0, 0.0, 1.0);
             return vec4<f32>(heat, 0.25, 1.0-heat, 1.0);
         }
-        if (traced.status == TRACE_CAPTURED) { return vec4<f32>(0.0, 0.0, 0.0, 1.0); }
-        // Budget exhaustion is visible and is never labelled as a horizon hit.
-        if (traced.status == TRACE_UNRESOLVED) { return vec4<f32>(0.55, 0.19, 0.015, select(1.0,0.0,game.postEnabled > 0.5)); }
+        if (traced.status == TRACE_STOPPED) { return vec4<f32>(0.0, 0.0, 0.0, 1.0); }
         return BackgroundColor(skyColor, traced.energy);
     }
     if (game.debugView == 5u) { return BackgroundColor(skyColor, 1.0); }

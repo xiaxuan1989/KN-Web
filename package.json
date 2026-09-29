@@ -16,8 +16,9 @@
     "test:sky": "python3 tools/prepare-physics-check.py && node tools/prepare-render-check.mjs && python3 tools/prepare-sky-check.py && cargo run --locked --manifest-path tools/physics-check/Cargo.toml -- --sky && python3 tools/summarize-sky-check.py",
     "test:post": "npm run test:temporal && npm run test:sky && node tools/prepare-post-check.mjs && python3 tools/prepare-post-pixels.py && cargo run --locked --manifest-path tools/physics-check/Cargo.toml --bin post-check && python3 tools/summarize-post-check.py && python3 tools/prepare-bloom-check.py && cargo run --locked --manifest-path tools/physics-check/Cargo.toml --bin post-check -- --oracle && python3 tools/summarize-bloom-check.py && python3 tools/summarize-temporal-check.py",
     "test:spectrum": "npm run test:post && python3 tools/prepare-spectrum-check.py && cargo run --locked --manifest-path tools/physics-check/Cargo.toml -- --sky --spectrum && python3 tools/summarize-spectrum-check.py",
-    "test:prepass": "npm run test:spectrum && node tools/prepare-prepass-check.mjs && python3 tools/prepare-prepass-sampling.py && cargo run --locked --manifest-path tools/physics-check/Cargo.toml --bin prepass-check && python3 tools/summarize-prepass-check.py && python3 tools/summarize-prepass-sampling.py",
-    "test:temporal": "node tools/prepare-temporal-check.mjs && python3 tools/check-temporal.py"
+    "test:prepass": "npm run test:trace && npm run test:spectrum && node tools/prepare-prepass-check.mjs && python3 tools/prepare-prepass-sampling.py && cargo run --locked --manifest-path tools/physics-check/Cargo.toml --bin prepass-check && python3 tools/summarize-prepass-check.py && python3 tools/summarize-prepass-sampling.py",
+    "test:temporal": "node tools/prepare-temporal-check.mjs && python3 tools/check-temporal.py",
+    "test:trace": "python3 tools/prepare-trace-budget-check.py && cargo run --locked --manifest-path tools/physics-check/Cargo.toml --bin trace-budget-check"
   },
   "devDependencies": {
     "@webgpu/types": "0.1.74",
