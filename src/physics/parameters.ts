@@ -10,7 +10,6 @@ export interface Parameters {
   exposure: number;
   gamma: number;
   bloomStrength: number;
-  bloomThreshold: number;
   background: 'sky' | 'grid';
   massSolar: number;
   spin: number;
@@ -29,7 +28,7 @@ export interface Parameters {
 export const DEFAULT_PARAMETERS: Readonly<Parameters> = Object.freeze({
   frequencyShift: true, backShiftMax: 1.5, backgroundBrightness: 2,
   postProcessing: true, taa: true, bloom: true,
-  exposure: 0, gamma: 2.2, bloomStrength: 0.08, bloomThreshold: 1,
+  exposure: 0, gamma: 2.2, bloomStrength: 0.08,
   background: 'sky',
   massSolar: 4_000_000,
   spin: 0.8,
@@ -46,7 +45,6 @@ export const PARAMETER_LIMITS = {
   exposure: [-8, 8],
   gamma: [1, 3],
   bloomStrength: [0, 0.5],
-  bloomThreshold: [0, 8],
   massSolar: [0.1, 1e10],
   spin: [-1.5, 1.5],
   charge: [-1.5, 1.5],

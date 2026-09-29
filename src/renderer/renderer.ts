@@ -103,9 +103,9 @@ export class Renderer {
       context.configure({ device, format, alphaMode: 'opaque' });
       this.uniforms = new UniformBuffers(device);
       this.prepassUniforms = new UniformBuffers(device);
-      this.callbacks.onLoading('正在加载原项目星空 · 0 / 6');
+      this.callbacks.onLoading('正在加载星空 · 0 / 6');
       const background = await Background.create(device, this.loading.signal, (count) => {
-        if (!this.disposed) this.callbacks.onLoading(`正在加载原项目星空 · ${count} / 6`);
+        if (!this.disposed) this.callbacks.onLoading(`正在加载星空 · ${count} / 6`);
       });
       if (this.disposed) { background.dispose(); return; }
       this.background = background;

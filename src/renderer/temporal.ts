@@ -1,18 +1,6 @@
 import type { CameraBasis } from '../camera/camera.ts';
 import type { Parameters } from '../physics/parameters.ts';
 
-export const BLOOM_WEIGHTS = [1, 1.5, 1, 1.5, 1.8, 1, 1, 1] as const;
-export function bloomSizes(width: number, height: number): [number, number][] {
-  const sizes: [number, number][] = [];
-  for (let i = 0; i < BLOOM_WEIGHTS.length; i++) {
-    width = Math.max(1, Math.floor(width / 2));
-    height = Math.max(1, Math.floor(height / 2));
-    sizes.push([width, height]);
-    if (width === 1 && height === 1) break;
-  }
-  return sizes;
-}
-
 function halton(index: number, base: number): number {
   let value = 0, fraction = 1;
   while (index > 0) {

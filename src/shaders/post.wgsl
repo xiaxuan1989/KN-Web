@@ -1,5 +1,5 @@
 struct PostArgs {
-    display: vec4<f32>, // exposure EV, gamma, bloom strength, threshold
+    display: vec4<f32>, // exposure EV, gamma, bloom strength, reserved
     temporal: vec4<f32>, // current weight, reserved, bloom enabled, post enabled
 };
 @group(0) @binding(0) var<uniform> post: PostArgs;
@@ -23,43 +23,97 @@ fn taa(input: PostVertex) -> @location(0) vec4<f32> {
     if (previous.a < 0.5) { return current; }
     return vec4<f32>(mix(previous.rgb,current.rgb,post.temporal.x),current.a);
 }
-fn bright(color: vec4<f32>) -> vec3<f32> {
-    if (color.a < 0.5) { return vec3<f32>(0); }
-    let peak = max(color.r,max(color.g,color.b));
-    return color.rgb * max(peak-post.display.w,0.0)/max(peak,1e-6);
+// NPGS Bloom.comp.glsl. All atlas passes use the full output dimensions.
+fn ColorFetch(uv: vec2<f32>) -> vec3<f32> {
+    if (uv.x < 0.00001 || uv.x > 0.99999 || uv.y < 0.00001 || uv.y > 0.99999) { return vec3<f32>(0); }
+    let color = textureSampleLevel(source,linearSampler,uv,0.0);
+    return color.rgb;
+}
+fn CalcOffset(octave: f32, resolution: vec2<f32>) -> vec2<f32> {
+    let padding = vec2<f32>(10)/resolution;
+    let column = min(1.0,floor(octave/3.0));
+    return vec2<f32>(-column*(0.25+padding.x),-(1.0-1.0/exp2(octave))-padding.y*octave+column*0.35);
+}
+fn Grab1(uv: vec2<f32>, octave: f32, offset: vec2<f32>) -> vec3<f32> {
+    let coord = (uv+offset)*exp2(octave);
+    if (any(coord < vec2<f32>(0)) || any(coord > vec2<f32>(1))) { return vec3<f32>(0); }
+    return ColorFetch(coord);
+}
+fn GrabN(uv: vec2<f32>, octave: f32, offset: vec2<f32>, samples: i32) -> vec3<f32> {
+    let scale = exp2(octave);
+    let coord = (uv+offset)*scale;
+    if (any(coord < vec2<f32>(0)) || any(coord > vec2<f32>(1))) { return vec3<f32>(0); }
+    let resolution = vec2<f32>(textureDimensions(source));
+    var color = vec3<f32>(0); var weights = 0.0;
+    for (var i=0; i<samples; i++) { for (var j=0; j<samples; j++) {
+        let delta = (vec2<f32>(f32(i),f32(j))/resolution+vec2<f32>(-f32(samples)*0.5)/resolution)*scale/f32(samples);
+        color += ColorFetch(coord+delta); weights += 1.0;
+    }}
+    return color/weights;
 }
 @fragment
-fn downsample(input: PostVertex) -> @location(0) vec4<f32> {
-    let step = 0.5/vec2<f32>(textureDimensions(source));
-    var color = vec3<f32>(0);
-    for (var y=0; y<2; y++) { for (var x=0; x<2; x++) {
-        let offset = vec2<f32>(f32(x*2-1),f32(y*2-1))*step;
-        let sampleColor = textureSampleLevel(source,linearSampler,input.uv+offset,0.0);
-        color += select(sampleColor.rgb,bright(sampleColor),passInfo.x > 0.5);
-    }}
-    return vec4<f32>(color*0.25,1);
+fn bloom_atlas(input: PostVertex) -> @location(0) vec4<f32> {
+    let resolution = vec2<f32>(textureDimensions(source));
+    let uv = input.position.xy/resolution;
+    var color = Grab1(uv,1.0,vec2<f32>(0));
+    color += GrabN(uv,2.0,CalcOffset(1.0,resolution),4);
+    color += GrabN(uv,3.0,CalcOffset(2.0,resolution),8);
+    color += GrabN(uv,4.0,CalcOffset(3.0,resolution),16);
+    color += GrabN(uv,5.0,CalcOffset(4.0,resolution),16);
+    color += GrabN(uv,6.0,CalcOffset(5.0,resolution),16);
+    color += GrabN(uv,7.0,CalcOffset(6.0,resolution),16);
+    color += GrabN(uv,8.0,CalcOffset(7.0,resolution),16);
+    return vec4<f32>(color,1);
 }
 fn blur(uv: vec2<f32>,axis: vec2<f32>) -> vec4<f32> {
-    // NPGS Bloom.frag.glsl::GaussBlur coefficients and paired linear taps.
     let weights = array<f32,5>(0.19638062,0.29675293,0.09442139,0.01037598,0.00025940);
     let offsets = array<f32,5>(0.0,1.41176471,3.29411765,5.17647059,7.05882353);
-    var color = textureSampleLevel(source,linearSampler,uv,0.0).rgb*weights[0];
+    if (uv.x >= 0.52) { return vec4<f32>(0,0,0,1); }
+    var color = ColorFetch(uv)*weights[0];
     var total = weights[0];
-    let step = axis/vec2<f32>(textureDimensions(source));
+    let resolution = vec2<f32>(textureDimensions(source));
     for (var i=1; i<5; i++) {
-        color += (textureSampleLevel(source,linearSampler,uv+step*offsets[i],0.0).rgb
-            +textureSampleLevel(source,linearSampler,uv-step*offsets[i],0.0).rgb)*weights[i];
-        total += 2.0*weights[i];
+        let offset = vec2<f32>(offsets[i])/resolution;
+        color += ColorFetch(uv+offset*axis)*weights[i];
+        color += ColorFetch(uv-offset*axis)*weights[i];
+        total += weights[i]*2.0;
     }
     return vec4<f32>(color/total,1);
 }
-@fragment fn blur_h(input: PostVertex) -> @location(0) vec4<f32> { return blur(input.uv,vec2<f32>(0.5,0)); }
-@fragment fn blur_v(input: PostVertex) -> @location(0) vec4<f32> { return blur(input.uv,vec2<f32>(0,0.5)); }
-@fragment
-fn upsample(input: PostVertex) -> @location(0) vec4<f32> {
-    let fine = textureSampleLevel(source,linearSampler,input.uv,0.0).rgb*passInfo.x;
-    let coarse = textureSampleLevel(auxiliary,linearSampler,input.uv,0.0).rgb*passInfo.y;
-    return vec4<f32>(fine+coarse,1);
+@fragment fn blur_h(input: PostVertex) -> @location(0) vec4<f32> { return blur(input.position.xy/vec2<f32>(textureDimensions(source)),vec2<f32>(0.5,0)); }
+@fragment fn blur_v(input: PostVertex) -> @location(0) vec4<f32> { return blur(input.position.xy/vec2<f32>(textureDimensions(source)),vec2<f32>(0,0.5)); }
+// NPGS ColorBlend.frag.glsl; retain its shifted cubic weights verbatim.
+fn Cubic(x: f32) -> vec4<f32> {
+    let x2=x*x; let x3=x2*x;
+    return vec4<f32>(-x3+3.0*x2-3.0*x+1.0,3.0*x3-6.0*x2+4.0,-3.0*x3+3.0*x2+3.0*x+1.0,x3)/6.0;
+}
+fn BicubicTexture(uv: vec2<f32>) -> vec3<f32> {
+    let resolution = vec2<f32>(textureDimensions(auxiliary));
+    let pixel = uv*resolution;
+    let fraction = fract(pixel);
+    let base = pixel-fraction;
+    let cx = Cubic(fraction.x-0.5); let cy = Cubic(fraction.y-0.5);
+    let coord = vec4<f32>(base.x-0.5,base.x+1.5,base.y-0.5,base.y+1.5);
+    let weights = vec4<f32>(cx.x+cx.y,cx.z+cx.w,cy.x+cy.y,cy.z+cy.w);
+    let offset = coord+vec4<f32>(cx.y,cx.w,cy.y,cy.w)/weights;
+    let s0 = textureSampleLevel(auxiliary,linearSampler,offset.xz/resolution,0.0).rgb;
+    let s1 = textureSampleLevel(auxiliary,linearSampler,offset.yz/resolution,0.0).rgb;
+    let s2 = textureSampleLevel(auxiliary,linearSampler,offset.xw/resolution,0.0).rgb;
+    let s3 = textureSampleLevel(auxiliary,linearSampler,offset.yw/resolution,0.0).rgb;
+    return mix(mix(s3,s2,weights.x/(weights.x+weights.y)),mix(s1,s0,weights.x/(weights.x+weights.y)),weights.z/(weights.z+weights.w));
+}
+fn GetBloom(uv: vec2<f32>) -> vec3<f32> {
+    let resolution = vec2<f32>(textureDimensions(auxiliary));
+    var color = vec3<f32>(0);
+    color += BicubicTexture(uv/exp2(1.0)-CalcOffset(0.0,resolution))*1.0;
+    color += BicubicTexture(uv/exp2(2.0)-CalcOffset(1.0,resolution))*1.5;
+    color += BicubicTexture(uv/exp2(3.0)-CalcOffset(2.0,resolution))*1.0;
+    color += BicubicTexture(uv/exp2(4.0)-CalcOffset(3.0,resolution))*1.5;
+    color += BicubicTexture(uv/exp2(5.0)-CalcOffset(4.0,resolution))*1.8;
+    color += BicubicTexture(uv/exp2(6.0)-CalcOffset(5.0,resolution))*1.0;
+    color += BicubicTexture(uv/exp2(7.0)-CalcOffset(6.0,resolution))*1.0;
+    color += BicubicTexture(uv/exp2(8.0)-CalcOffset(7.0,resolution))*1.0;
+    return color;
 }
 fn DisplayMap(hdr: vec3<f32>,exposure: f32,gamma: f32) -> vec3<f32> {
     // ColorBlend.frag.glsl grading, with exposure EV and adjustable final gamma.
@@ -74,7 +128,8 @@ fn DisplayMap(hdr: vec3<f32>,exposure: f32,gamma: f32) -> vec3<f32> {
 fn present(input: PostVertex) -> @location(0) vec4<f32> {
     let color = textureSampleLevel(source,linearSampler,input.uv,0.0);
     if (post.temporal.w < 0.5 || color.a < 0.5) { return vec4<f32>(color.rgb,1); }
-    let glow = textureSampleLevel(auxiliary,linearSampler,input.uv,0.0).rgb;
+    var glow = vec3<f32>(0);
+    if (post.temporal.z > 0.5) { glow = GetBloom(input.position.xy/vec2<f32>(textureDimensions(source))); }
     let hdr = color.rgb+glow*post.display.z*post.temporal.z;
     return vec4<f32>(DisplayMap(hdr,post.display.x,post.display.y),1);
 }

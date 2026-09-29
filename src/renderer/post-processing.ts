@@ -1,8 +1,6 @@
 import type { Parameters } from '../physics/parameters.ts';
-import { BLOOM_WEIGHTS, bloomSizes } from './temporal.ts';
 
-type PassName = 'taa' | 'downsample' | 'blur_h' | 'blur_v' | 'upsample' | 'present';
-type BloomLevel = { down: GPUTexture; horizontal: GPUTexture; blurred: GPUTexture };
+type PassName = 'taa' | 'bloom_atlas' | 'blur_h' | 'blur_v' | 'present';
 
 export class PostProcessing {
   private readonly device: GPUDevice;
@@ -14,7 +12,7 @@ export class PostProcessing {
   private readonly passBuffers = new Map<string, GPUBuffer>();
   private textures: GPUTexture[] = [];
   private history: GPUTexture[] = [];
-  private levels: BloomLevel[] = [];
+  private bloomTargets: GPUTexture[] = [];
   private index = 0;
   private width = 0;
   private height = 0;
@@ -23,7 +21,7 @@ export class PostProcessing {
   private constructor(device: GPUDevice) {
     this.device = device;
     this.uniform = device.createBuffer({ label: 'PostArgs', size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-    this.sampler = device.createSampler({ minFilter: 'linear', magFilter: 'linear' });
+    this.sampler = device.createSampler({ minFilter: 'linear', magFilter: 'linear', addressModeU: 'repeat', addressModeV: 'repeat' });
     this.layout = device.createBindGroupLayout({ entries: [
       { binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform', minBindingSize: 32 } },
       { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: {} },
@@ -41,7 +39,7 @@ export class PostProcessing {
       const errors = info.messages.filter(message => message.type === 'error');
       if (errors.length) throw new Error(errors.map(m => `Post WGSL ${m.lineNum}:${m.linePos} ${m.message}`).join('\n'));
       const layout = device.createPipelineLayout({ bindGroupLayouts: [post.layout] });
-      const entries: PassName[] = ['taa', 'downsample', 'blur_h', 'blur_v', 'upsample', 'present'];
+      const entries: PassName[] = ['taa', 'bloom_atlas', 'blur_h', 'blur_v', 'present'];
       // Finish all pending pipeline builds even if one fails before releasing resources.
       const results = await Promise.allSettled(entries.map(async entry => {
         const pipeline = await device.createRenderPipelineAsync({ label: entry, layout,
@@ -67,17 +65,14 @@ export class PostProcessing {
     };
     this.scene = allocate('HDR current', width, height);
     this.history = [allocate('HDR history A', width, height), allocate('HDR history B', width, height)];
-    this.levels = bloomSizes(width, height).map(([w,h], i) => ({
-      down: allocate(`Bloom ${i} down/up`,w,h), horizontal: allocate(`Bloom ${i} horizontal`,w,h),
-      blurred: allocate(`Bloom ${i} blurred`,w,h),
-    }));
+    this.bloomTargets = [allocate('Bloom atlas',width,height), allocate('Bloom horizontal',width,height)];
     return true;
   }
 
   encode(encoder: GPUCommandEncoder, target: GPUTextureView, p: Parameters, weight: number, active: boolean): void {
     const bloom = active && p.bloom && p.bloomStrength > 0;
     this.device.queue.writeBuffer(this.uniform, 0, new Float32Array([
-      p.exposure, p.gamma, p.bloomStrength, p.bloomThreshold, weight, 0, Number(bloom), Number(active),
+      p.exposure, p.gamma, p.bloomStrength, 0, weight, 0, Number(bloom), Number(active),
     ]));
     let resolved = this.scene;
     if (active && p.taa) {
@@ -87,20 +82,11 @@ export class PostProcessing {
     }
     let glow = resolved;
     if (bloom) {
-      let previous = resolved;
-      for (const [i,level] of this.levels.entries()) {
-        this.draw(encoder,'downsample',previous,previous,level.down.createView(),i === 0 ? 1 : 0);
-        this.draw(encoder,'blur_h',level.down,level.down,level.horizontal.createView());
-        this.draw(encoder,'blur_v',level.horizontal,level.horizontal,level.blurred.createView());
-        previous = level.down;
-      }
-      for (let i = this.levels.length-1; i >= 0; i--) {
-        const level = this.levels[i];
-        const last = i === this.levels.length-1;
-        this.draw(encoder,'upsample',level.blurred,last ? level.blurred : this.levels[i+1].down,
-          level.down.createView(),BLOOM_WEIGHTS[i],last ? 0 : 1);
-      }
-      glow = this.levels[0].down;
+      const [atlas,horizontal] = this.bloomTargets;
+      this.draw(encoder,'bloom_atlas',resolved,resolved,atlas.createView());
+      this.draw(encoder,'blur_h',atlas,atlas,horizontal.createView());
+      this.draw(encoder,'blur_v',horizontal,horizontal,atlas.createView());
+      glow = atlas;
     }
     this.draw(encoder,'present',resolved,glow,target);
   }
@@ -135,7 +121,7 @@ export class PostProcessing {
   private releaseTargets(): void {
     this.textures.forEach(t => t.destroy()); this.textures = [];
     this.passBuffers.forEach(b => b.destroy()); this.passBuffers.clear(); this.groups.clear();
-    this.history = []; this.levels = [];
+    this.history = []; this.bloomTargets = [];
   }
   dispose(): void { this.releaseTargets(); this.uniform.destroy(); }
 }
