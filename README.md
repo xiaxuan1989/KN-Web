@@ -19,12 +19,12 @@ npm run dev
 - Firefox：Windows 从 141 起支持；Apple Silicon Mac 建议 147+，支持较早的受支持 macOS。其他系统与设备以浏览器实际开放的 WebGPU 能力为准。
 - Chrome / Edge：使用已启用 WebGPU 的版本与受支持的系统、GPU；必要时检查硬件加速设置。
 
-初始化会在高性能 GPU 请求失败时尝试浏览器默认 GPU；设备型号缺失不会阻止渲染。着色器诊断接口缺失时仍通过异步管线创建验证着色器。画布使用浏览器推荐格式及 sRGB，预计算不依赖可选的 float32 纹理过滤功能。不提供 WebGL 降级。
+沿用标准 WebGPU 初始化与着色器编译检查，画布使用浏览器推荐格式及默认 sRGB，预计算不依赖可选的 float32 纹理过滤功能。不提供 WebGL 降级。
 
 支持条件及实测边界见 [浏览器兼容说明](docs/browser-compatibility.md)。
 
 ```sh
-npm test             # 70 项 CPU 测试：相机、输入、uniform、cubemap、异步清理与浏览器兼容路径
+npm test             # 63 项 CPU 测试：相机、输入、uniform、cubemap、异步清理与画布格式
 npm run build        # TypeScript 检查 + Vite 静态构建
 npm run preview      # http://127.0.0.1:4173/
 npm run test:physics # GLSL / WGSL 实际 GPU 对照 + 网格离屏绘制
@@ -67,7 +67,7 @@ npm run test:prepass  # 含上述回归 + 23 组预计算 / 合成场景及原 G
 
 ## 验证现状
 
-- 70 项 CPU 测试、TypeScript 和生产构建通过，覆盖轨道 / 摆头、T 切换、自由平移 / 滚转、惯性衰减、平滑回正，以及滚轮距离倍率 / 平滑、朝向保持、自由移动速度、生命周期清理与浏览器兼容路径。
+- 63 项 CPU 测试、TypeScript 和生产构建通过，覆盖轨道 / 摆头、T 切换、自由平移 / 滚转、惯性衰减、平滑回正，以及滚轮距离倍率 / 平滑、朝向保持、自由移动速度、生命周期清理与画布格式。
 - Apple M3 Pro / Metal：23 组GLSL vs WGSL 数值对照、31 条完整追踪探针、108 个六面朝向 / 颜色 / mip 探针、14 张完整管线离屏图通过。
 - 自旋反转的阴影逐像素镜像；固定 a*=0.8 加电荷后阴影缩小；近临界光线展示绕转行为。
 - 16 组后处理图、32 帧原生 GPU 回放通过；TAA 混合 / 重置、HDR 数值、Bloom、曝光、Gamma 与方向校验见 [Phase 6 报告](docs/phase6-post.md)。
