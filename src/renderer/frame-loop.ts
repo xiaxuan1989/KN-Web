@@ -5,14 +5,17 @@ interface FrameLoopCallbacks {
   failed: (error: unknown) => void;
 }
 
-// NPGS waits for the preceding frame's fence before reusing shared targets.
-// A task between frames lets input and canvas presentation run, without RAF
-// pacing or a setTimeout nesting clamp. At most one frame is in flight.
+const MAX_FRAMES_IN_FLIGHT = 2;
+
+// Yield a task between submissions so input and canvas presentation can run
+// without RAF pacing. Prepare the next frame while the GPU finishes earlier
+// work, but bound the queue to avoid accumulating latency.
 export class FrameLoop {
   private running = false;
   private disposed = false;
   private scheduled = false;
-  private busy = false;
+  private inFlight = 0;
+  private faulted = false;
   private generation = 0;
   private readonly callbacks: FrameLoopCallbacks;
   private readonly now: () => number;
@@ -33,7 +36,7 @@ export class FrameLoop {
   }
 
   start(): void {
-    if (this.disposed) return;
+    if (this.disposed || this.faulted) return;
     this.running = true;
     this.schedule();
   }
@@ -51,36 +54,44 @@ export class FrameLoop {
   }
 
   private schedule(): void {
-    if (!this.running || this.disposed || this.scheduled || this.busy) return;
+    if (!this.running || this.disposed || this.scheduled || this.inFlight >= MAX_FRAMES_IN_FLIGHT) return;
     this.scheduled = true;
     this.channel.port2.postMessage(null);
   }
 
   private async frame(): Promise<void> {
-    if (!this.running || this.disposed || this.busy) return;
-    this.busy = true;
+    if (!this.running || this.disposed || this.inFlight >= MAX_FRAMES_IN_FLIGHT) return;
+    this.inFlight++;
     const generation = this.generation;
     try {
       this.callbacks.draw(this.now());
-      await this.callbacks.waitForGpu();
+      // Capture this submission's completion before scheduling another draw.
+      // Each invocation owns one slot and counts exactly one rendered frame;
+      // onSubmittedWorkDone also covers earlier work, which is not recounted.
+      const completion = this.callbacks.waitForGpu();
+      this.schedule();
+      await completion;
       if (this.running && !this.disposed && this.generation === generation) {
         this.callbacks.completed(this.now());
       }
     } catch (error) {
-      if (!this.disposed) {
+      if (!this.disposed && !this.faulted) {
+        this.faulted = true;
         this.pause();
         this.callbacks.failed(error);
       }
     } finally {
-      this.busy = false;
+      // Keep outstanding slots across pause/resume; old completions release
+      // capacity without entering the new generation's FPS measurement.
+      this.inFlight--;
       this.schedule();
     }
   }
 }
 
-// Application.cpp::update: ++FramePerSec; if elapsed >= 1 s, display the
-// integer count, clear it, and start the next window at the current time.
-export class NativeFpsCounter {
+// Completed rendering throughput, independent of the display refresh rate.
+// Normalize by actual elapsed time, including delayed completion callbacks.
+export class CompletedFpsCounter {
   private previousTime = 0;
   private frames = 0;
   value: number | null = null;
@@ -93,8 +104,9 @@ export class NativeFpsCounter {
 
   completed(time: number): boolean {
     this.frames++;
-    if (time - this.previousTime < 1000) return false;
-    this.value = this.frames;
+    const elapsed = time - this.previousTime;
+    if (elapsed < 1000) return false;
+    this.value = Math.round(this.frames * 1000 / elapsed);
     this.frames = 0;
     this.previousTime = time;
     return true;

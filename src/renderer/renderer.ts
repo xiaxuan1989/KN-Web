@@ -22,7 +22,7 @@ import { CameraInput } from '../camera/input.ts';
 import type { Parameters } from '../physics/parameters.ts';
 import { UniformBuffers } from './buffers.ts';
 import { WEBGPU_REQUIREMENTS } from './webgpu-support.ts';
-import { FrameLoop, NativeFpsCounter } from './frame-loop.ts';
+import { FrameLoop, CompletedFpsCounter } from './frame-loop.ts';
 
 export interface RendererStats {
   width: number;
@@ -56,7 +56,7 @@ export class Renderer {
   private usePrepass = false;
   private loop?: FrameLoop;
   private disposed = false;
-  private readonly fps = new NativeFpsCounter();
+  private readonly fps = new CompletedFpsCounter();
   private lastStatsTime = -Infinity;
   private lastFrameTime?: number;
   private elapsedTime = 0;
@@ -259,6 +259,8 @@ export class Renderer {
     this.temporalFrame = advanceObserverFrame(this.temporal,this.camera.basis(),this.parameters,
       this.realDeltaTime,this.postActive && this.parameters.taa,this.trajectory);
     this.updateUniforms();
+    // Keep uploads and submission synchronous and ordered on the same queue:
+    // frame N reads its uniforms/history before frame N+1 overwrites them.
     this.uniforms!.upload();
     this.prepassUniforms!.upload();
 
