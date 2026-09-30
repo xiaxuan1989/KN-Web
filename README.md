@@ -24,7 +24,7 @@ npm run dev
 支持条件及实测边界见 [浏览器兼容说明](docs/browser-compatibility.md)。
 
 ```sh
-npm test             # 80 项 CPU 测试：相机、输入、uniform、cubemap、异步清理与画布格式
+npm test             # 88 项 CPU 测试：相机、输入、uniform、渲染循环、FPS 与资源清理
 npm run build        # TypeScript 检查 + Vite 静态构建
 npm run preview      # http://127.0.0.1:4173/
 npm run test:physics # GLSL / WGSL 实际 GPU 对照 + 网格离屏绘制
@@ -65,6 +65,7 @@ npm run test:prepass  # 含上述回归 + 54 组预计算 / 合成场景及原 G
 - 「黑洞预设」：Schwarzschild (0,0)、Kerr (0.95,0)、KN (0.8,0.4)，只修改 a* / Q*，保留相机。
 - 「颜色频移」默认开启：GLSL 光谱映射、Shift⁴、背景亮度倍率，频移来自光线初始守恒能量；默认上限 1.5、亮度倍率 2。关闭可对照原色；「原背景」使用 shift=1。
 - 「后处理」可独立开关 TAA / Bloom，调整曝光 EV、Gamma、泛光强度。沿用 NPGS 无抖动、时间相关的历史权重，运动超过原阈值时只使用当前帧。可调时间倍率，面板显示当前帧权重；关闭后处理查看原色。
+- FPS 沿用 NPGS 标题的每秒整数帧计数，显示在标签页标题并同步到面板。等待上一帧 GPU 完成后继续渲染，不受 RAF 刷新节拍限制，数字可以超过屏幕刷新率；隐藏页面暂停，恢复时重新计数。见 [FPS 对齐记录](docs/fps-alignment.md)。
 - 「重置相机」恢复原默认轨道角度（Theta=0°、Phi=45°），从 1 光年平滑靠近 0.0003 光年（默认质量下约 64.5 Rs）；「校验 GPU 参数」再次验证 CPU/WGSL uniform 快照。
 - 保留 Phase 0 的 UV、Phase 1 的相机网格和参数颜色视图用于回归检查。
 
@@ -74,7 +75,7 @@ npm run test:prepass  # 含上述回归 + 54 组预计算 / 合成场景及原 G
 
 ## 验证现状
 
-- 80 项 CPU 测试、TypeScript 和生产构建通过，覆盖轨道 / 摆头、T 切换、自由平移 / 滚转、惯性衰减、平滑回正，以及滚轮距离倍率 / 平滑、朝向保持、自由移动速度、生命周期清理与画布格式。
+- 88 项 CPU 测试、TypeScript 和生产构建通过，覆盖轨道 / 摆头、T 切换、自由平移 / 滚转、惯性衰减、平滑回正，以及滚轮距离倍率 / 平滑、朝向保持、自由移动速度、生命周期清理与画布格式；包含 FPS 统计、GPU 等待和暂停恢复的 8 项回归。
 - Apple M3 Pro / Metal：23 组GLSL vs WGSL 数值对照、31 条完整追踪探针、108 个六面朝向 / 颜色 / mip 探针、14 张完整管线离屏图通过。
 - 自旋反转的阴影逐像素镜像；固定 a*=0.8 加电荷后阴影缩小；近临界光线展示绕转行为。
 - 16 组后处理图、32 帧原生 GPU 回放通过；TAA 混合 / 重置、HDR 数值、Bloom、曝光、Gamma 与方向校验见 [Phase 6 报告](docs/phase6-post.md)。

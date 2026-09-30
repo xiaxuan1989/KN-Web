@@ -38,6 +38,13 @@ setPanelExpanded(true);
 panelToggle.addEventListener('click', () => setPanelExpanded(panel.hidden === true), { signal: events.signal });
 let renderer: Renderer | undefined;
 
+function showFps(value: number | null): void {
+  const text = value === null ? '—' : String(value);
+  fps.textContent = text;
+  const title = `KN · WebGPU FPS: ${text}`;
+  if (document.title !== title) document.title = title;
+}
+
 function start(): void {
   renderer?.dispose();
   status.textContent = '正在初始化 WebGPU…';
@@ -45,7 +52,7 @@ function start(): void {
   adapter.textContent = '等待设备';
   resolution.textContent = '—';
   prepassResolution.textContent = '—';
-  fps.textContent = '—';
+  showFps(null);
   taaWeight.textContent = '—';
   retry.hidden = true;
   verify.disabled = true;
@@ -62,7 +69,7 @@ function start(): void {
     onStats: (stats) => {
       resolution.textContent = `${stats.width} × ${stats.height}`;
       prepassResolution.textContent = stats.prepassEnabled ? `${stats.prepassWidth} × ${stats.prepassHeight}` : '关闭 · 全分辨率追踪';
-      fps.textContent = stats.fps === null ? '—' : stats.fps.toFixed(1);
+      showFps(stats.fps);
       taaWeight.textContent = stats.temporalWeight === null ? '关闭' : `${(stats.temporalWeight*100).toFixed(2)}% 当前帧`;
       observerStatus.textContent = stats.observerStatus;
       position.textContent = stats.position.map((value) => value.toFixed(2)).join(', ');
@@ -71,7 +78,7 @@ function start(): void {
       controls.sync();
     },
     onError: (message) => {
-      fps.textContent = '—';
+      showFps(null);
       status.textContent = message;
       status.dataset.state = 'error';
       retry.hidden = false;
@@ -102,6 +109,7 @@ start();
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
+    showFps(null);
     renderer?.dispose();
     controls.dispose();
     events.abort();

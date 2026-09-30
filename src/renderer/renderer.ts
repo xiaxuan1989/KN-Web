@@ -22,6 +22,7 @@ import { CameraInput } from '../camera/input.ts';
 import type { Parameters } from '../physics/parameters.ts';
 import { UniformBuffers } from './buffers.ts';
 import { WEBGPU_REQUIREMENTS } from './webgpu-support.ts';
+import { FrameLoop, NativeFpsCounter } from './frame-loop.ts';
 
 export interface RendererStats {
   width: number;
@@ -53,10 +54,9 @@ export class Renderer {
   private prepassUniforms?: UniformBuffers;
   private halfSize: [number,number] = [1,1];
   private usePrepass = false;
-  private frameId = 0;
+  private loop?: FrameLoop;
   private disposed = false;
-  private fpsFrames = 0;
-  private fpsElapsedMs = 0;
+  private readonly fps = new NativeFpsCounter();
   private lastStatsTime = -Infinity;
   private lastFrameTime?: number;
   private elapsedTime = 0;
@@ -146,9 +146,19 @@ export class Renderer {
 
       const info = adapter.info;
       this.callbacks.onReady(info.description || [info.vendor, info.architecture].filter(Boolean).join(' / ') || 'WebGPU 设备（浏览器未公开型号）');
+      this.loop = new FrameLoop({
+        draw: this.frame,
+        waitForGpu: () => device.queue.onSubmittedWorkDone(),
+        completed: time => {
+          const updated = this.fps.completed(time);
+          if (updated || time - this.lastStatsTime >= 500) this.reportStats(time);
+        },
+        failed: error => this.fail(error instanceof Error ? error.message : String(error)),
+      });
+      this.fps.reset(performance.now());
       this.reportStats(performance.now());
       document.addEventListener('visibilitychange', this.onVisibilityChange);
-      if (!document.hidden) this.frameId = requestAnimationFrame(this.frame);
+      if (!document.hidden) this.loop.start();
     } catch (error) {
       if (!this.disposed) this.fail(error instanceof Error ? error.message : String(error));
     }
@@ -157,7 +167,7 @@ export class Renderer {
   dispose(): void {
     this.disposed = true;
     this.loading.abort();
-    cancelAnimationFrame(this.frameId);
+    this.loop?.dispose();
     document.removeEventListener('visibilitychange', this.onVisibilityChange);
     this.input?.dispose();
     this.uniforms?.dispose();
@@ -202,38 +212,29 @@ export class Renderer {
   }
 
   private readonly onVisibilityChange = (): void => {
-    cancelAnimationFrame(this.frameId);
+    this.loop?.pause();
     this.lastFrameTime = undefined;
-    this.fpsFrames = 0;
-    this.fpsElapsedMs = 0;
+    this.realDeltaTime = 0;
+    this.fps.reset(performance.now());
     this.lastStatsTime = -Infinity;
     this.temporal.reset();
-    if (!document.hidden && !this.disposed) this.frameId = requestAnimationFrame(this.frame);
+    if (this.disposed) return;
+    this.reportStats(performance.now());
+    if (!document.hidden) this.loop?.start();
   };
 
   private readonly frame = (time: number): void => {
     if (this.disposed) return;
-    try {
-      // Measure actual animation-frame intervals, before the simulation's 50 ms cap.
-      if (this.lastFrameTime !== undefined && time > this.lastFrameTime) {
-        this.fpsElapsedMs += time - this.lastFrameTime;
-        this.fpsFrames += 1;
-      }
-      // Native update evolves the camera using the preceding measured interval.
-      const cameraDeltaTime = this.lastFrameTime === undefined ? 0 : this.realDeltaTime;
-      this.realDeltaTime = this.lastFrameTime === undefined ? 0 : Math.max(0, (time - this.lastFrameTime) / 1000);
-      this.deltaTime = Math.min(0.05,this.realDeltaTime);
-      this.lastFrameTime = time;
-      this.elapsedTime += this.deltaTime;
-      this.simulationTime += this.parameters.timeRate*this.realDeltaTime;
-      this.camera.setMass(this.parameters.massSolar);
-      this.input?.update(cameraDeltaTime);
-      this.draw();
-      if (time - this.lastStatsTime >= 500) this.reportStats(time);
-      this.frameId = requestAnimationFrame(this.frame);
-    } catch (error) {
-      this.fail(error instanceof Error ? error.message : String(error));
-    }
+    // Native update evolves the camera using the preceding measured interval.
+    const cameraDeltaTime = this.lastFrameTime === undefined ? 0 : this.realDeltaTime;
+    this.realDeltaTime = this.lastFrameTime === undefined ? 0 : Math.max(0, (time - this.lastFrameTime) / 1000);
+    this.deltaTime = Math.min(0.05,this.realDeltaTime);
+    this.lastFrameTime = time;
+    this.elapsedTime += this.deltaTime;
+    this.simulationTime += this.parameters.timeRate*this.realDeltaTime;
+    this.camera.setMass(this.parameters.massSolar);
+    this.input?.update(cameraDeltaTime);
+    this.draw();
   };
 
   private draw(): void {
@@ -275,14 +276,12 @@ export class Renderer {
     this.callbacks.onStats({
       width: this.canvas.width, height: this.canvas.height,
       prepassWidth: this.halfSize[0], prepassHeight: this.halfSize[1], prepassEnabled: this.usePrepass,
-      fps: this.fpsElapsedMs > 0 ? this.fpsFrames * 1000 / this.fpsElapsedMs : null,
+      fps: this.fps.value,
       temporalWeight: this.postActive && this.parameters.taa ? this.temporalFrame.weight : null,
       observerStatus: this.trajectory ? (this.trajectory.stopped ? '四维轨迹已到当前可追踪范围边界；重置相机可重新出发。'
         : `四维轨迹${this.parameters.timeRate === 0 ? '已暂停' : '运行中'} · 固有时间 ${this.trajectory.properTime.toFixed(3)} Rs/c`) : '',
       time: this.elapsedTime, position: this.trajectory ? this.trajectory.state.slice(0,3) as Vec3 : basis.position, direction: basis.forward,
     });
-    this.fpsFrames = 0;
-    this.fpsElapsedMs = 0;
   }
 
   private updateUniforms(): void {
