@@ -24,7 +24,7 @@ npm run dev
 支持条件及实测边界见 [浏览器兼容说明](docs/browser-compatibility.md)。
 
 ```sh
-npm test             # 88 项 CPU 测试：相机、输入、uniform、渲染循环、FPS 与资源清理
+npm test             # 90 项 CPU 测试：相机、输入、uniform、渲染循环、FPS 与资源清理
 npm run build        # TypeScript 检查 + Vite 静态构建
 npm run preview      # http://127.0.0.1:4173/
 npm run test:physics # GLSL / WGSL 实际 GPU 对照 + 网格离屏绘制
@@ -75,11 +75,11 @@ npm run test:prepass  # 含上述回归 + 54 组预计算 / 合成场景及原 G
 
 ## 验证现状
 
-- 88 项 CPU 测试、TypeScript 和生产构建通过，覆盖轨道 / 摆头、T 切换、自由平移 / 滚转、惯性衰减、平滑回正，以及滚轮距离倍率 / 平滑、朝向保持、自由移动速度、生命周期清理与画布格式；包含 FPS 统计、GPU 等待和暂停恢复的 8 项回归。
+- 90 项 CPU 测试、TypeScript 和生产构建通过，覆盖轨道 / 摆头、T 切换、自由平移 / 滚转、惯性衰减、平滑回正，以及滚轮距离倍率 / 平滑、朝向保持、自由移动速度、生命周期清理与画布格式；包含 FPS 统计、GPU 等待和暂停恢复的 8 项回归。
 - Apple M3 Pro / Metal：23 组GLSL vs WGSL 数值对照、31 条完整追踪探针、108 个六面朝向 / 颜色 / mip 探针、14 张完整管线离屏图通过。
 - 自旋反转的阴影逐像素镜像；固定 a*=0.8 加电荷后阴影缩小；近临界光线展示绕转行为。
-- 16 组后处理图、32 帧原生 GPU 回放通过；TAA 混合 / 重置、HDR 数值、Bloom、曝光、Gamma 与方向校验见 [Phase 6 报告](docs/phase6-post.md)。
-- Bloom 已对齐 `Bloom.comp.glsl` atlas 与 `ColorBlend.frag.glsl` bicubic 重建，移除额外阈值；51 次 HDR 阶段对照在本机逐值一致，最终显示最多相差 1/255，见 [Bloom 对齐记录](docs/bloom-alignment.md)。
+- 20 组后处理图、154 帧原生 GPU 回放通过；TAA 混合 / 重置、HDR 数值、Bloom、曝光、Gamma 与方向校验见 [Phase 6 报告](docs/phase6-post.md)。
+- Bloom 已对齐 `Bloom.comp.glsl` atlas 与 `ColorBlend.frag.glsl` bicubic 重建，移除额外阈值；57 次 HDR 阶段对照在本机逐值一致，最终显示最多相差 1/255，见 [Bloom 对齐记录](docs/bloom-alignment.md)。Bloom 已改为 compute（atlas 4×4、模糊 16×16），本机 Chrome 同场景约 90 → 110 FPS，见 [性能验证](docs/bloom-compute-performance.md)。
 - TAA 已迁移原时间权重、无抖动及运动判据；四维模式按原宿主先计算权重，再积分和回写位置 / 速度。495 组公式、480 帧四维宿主对照及 132 帧 GLSL / WGSL 历史混合通过，见 [TAA 对齐记录](docs/taa-alignment.md)。
 - 追踪预算 / 终止状态：189 组原 GLSL 控制流对照通过；实际 RK4 压力探针可超过 1024 步，详见 [追踪预算对齐记录](docs/trace-budget-alignment.md)。
 - 默认参数与相机：702 个原 FCamera 状态快照对照通过，涵盖原启动距离、极点、中心 / 轴平滑、T 冷却和世界单位换算，见 [相机对齐记录](docs/camera-alignment.md)。

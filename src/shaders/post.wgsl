@@ -7,6 +7,7 @@ struct PostArgs {
 @group(0) @binding(2) var auxiliary: texture_2d<f32>;
 @group(0) @binding(3) var linearSampler: sampler;
 @group(0) @binding(4) var<uniform> passInfo: vec4<f32>;
+@group(1) @binding(0) var outputTexture: texture_storage_2d<rgba16float,write>;
 
 struct PostVertex { @builtin(position) position: vec4<f32>, @location(0) uv: vec2<f32> };
 @vertex
@@ -50,10 +51,8 @@ fn GrabN(uv: vec2<f32>, octave: f32, offset: vec2<f32>, samples: i32) -> vec3<f3
     }}
     return color/weights;
 }
-@fragment
-fn bloom_atlas(input: PostVertex) -> @location(0) vec4<f32> {
+fn BloomAtlas(uv: vec2<f32>) -> vec4<f32> {
     let resolution = vec2<f32>(textureDimensions(source));
-    let uv = input.position.xy/resolution;
     var color = Grab1(uv,1.0,vec2<f32>(0));
     color += GrabN(uv,2.0,CalcOffset(1.0,resolution),4);
     color += GrabN(uv,3.0,CalcOffset(2.0,resolution),8);
@@ -79,8 +78,6 @@ fn blur(uv: vec2<f32>,axis: vec2<f32>) -> vec4<f32> {
     }
     return vec4<f32>(color/total,1);
 }
-@fragment fn blur_h(input: PostVertex) -> @location(0) vec4<f32> { return blur(input.position.xy/vec2<f32>(textureDimensions(source)),vec2<f32>(0.5,0)); }
-@fragment fn blur_v(input: PostVertex) -> @location(0) vec4<f32> { return blur(input.position.xy/vec2<f32>(textureDimensions(source)),vec2<f32>(0,0.5)); }
 // NPGS ColorBlend.frag.glsl; retain its shifted cubic weights verbatim.
 fn Cubic(x: f32) -> vec4<f32> {
     let x2=x*x; let x3=x2*x;
@@ -131,4 +128,24 @@ fn present(input: PostVertex) -> @location(0) vec4<f32> {
     if (post.temporal.z > 0.5) { glow = GetBloom(input.position.xy/vec2<f32>(textureDimensions(source))); }
     let hdr = color.rgb+glow*post.display.z*post.temporal.z;
     return vec4<f32>(DisplayMap(hdr,post.display.x,post.display.y),1);
+}
+// Same pixel centers, full-size intermediates and f16 stage boundaries as NPGS.
+// Only scheduling differs: small atlas groups, larger groups for the short blur.
+@compute @workgroup_size(4,4) fn bloom_atlas(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let size=textureDimensions(outputTexture);
+    if (any(gid.xy>=size)) { return; }
+    let uv=(vec2<f32>(gid.xy)+vec2<f32>(0.5))/vec2<f32>(size);
+    textureStore(outputTexture,vec2<i32>(gid.xy),BloomAtlas(uv));
+}
+@compute @workgroup_size(16,16) fn blur_h(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let size=textureDimensions(outputTexture);
+    if (any(gid.xy>=size)) { return; }
+    let uv=(vec2<f32>(gid.xy)+vec2<f32>(0.5))/vec2<f32>(size);
+    textureStore(outputTexture,vec2<i32>(gid.xy),blur(uv,vec2<f32>(0.5,0)));
+}
+@compute @workgroup_size(16,16) fn blur_v(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let size=textureDimensions(outputTexture);
+    if (any(gid.xy>=size)) { return; }
+    let uv=(vec2<f32>(gid.xy)+vec2<f32>(0.5))/vec2<f32>(size);
+    textureStore(outputTexture,vec2<i32>(gid.xy),blur(uv,vec2<f32>(0,0.5)));
 }
