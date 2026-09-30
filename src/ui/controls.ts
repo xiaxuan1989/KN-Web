@@ -1,18 +1,53 @@
 import { PARAMETER_LIMITS, setParameter, type NumericParameter, type Parameters } from '../physics/parameters.ts';
 
-export function bindControls(parameters: Parameters): { sync: () => void; dispose: () => void } {
+export function bindControls(parameters: Parameters, actions: { boost?: (direction: 'look' | 'velocity') => boolean } = {}): { sync: () => void; dispose: () => void } {
   const controller = new AbortController();
+  const diagnostic = document.querySelector<HTMLSelectElement>('#native-debug')!;
+  diagnostic.value = String(parameters.nativeDebug);
+  diagnostic.addEventListener('change', () => {
+    const value = Number(diagnostic.value);
+    if (value === 0 || value === 1 || value === 2 || value === 3 || value === 4 || value === 5 || value === 6) {
+      parameters.nativeDebug = value;
+      parameters.debugView = 3;
+      document.querySelector<HTMLSelectElement>('#debug-view')!.value = '3';
+    }
+  }, { signal: controller.signal });
+  const grid = document.querySelector<HTMLSelectElement>('#spatial-grid')!;
+  grid.value = String(parameters.spatialGrid);
+  grid.addEventListener('change', () => {
+    const mode = Number(grid.value);
+    if (mode === -1 || mode === 0 || mode === 1 || mode === 2) parameters.spatialGrid = mode;
+  }, { signal: controller.signal });
   const observer = document.querySelector<HTMLSelectElement>('#observer-mode')!;
-  observer.value = String(parameters.observerMode);
+  const syncObserver = (): void => {
+    observer.value = String(parameters.observerMode);
+    for (const button of document.querySelectorAll<HTMLButtonElement>('[data-boost]')) button.disabled = parameters.observerMode !== -1;
+  };
+  syncObserver();
+  for (const key of ['observerThrust','boostRapidity'] as const) {
+    const input = document.querySelector<HTMLInputElement>(`[data-parameter="${key}"]`)!;
+    input.value = String(parameters[key]);
+    input.addEventListener('input', () => {
+      const value = Math.fround(input.valueAsNumber);
+      if (Number.isFinite(value) && (key !== 'observerThrust' || value >= 0)) parameters[key] = value;
+    }, { signal: controller.signal });
+    input.addEventListener('blur', () => { input.value = String(parameters[key]); }, { signal: controller.signal });
+  }
+  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-boost]')) button.addEventListener('click', () => {
+    const direction = button.dataset.boost === 'look' ? 'look' : 'velocity';
+    const ok = actions.boost?.(direction) ?? false;
+    document.querySelector<HTMLElement>('#boost-status')!.textContent = ok ? '已施加瞬时加速。' : '未施加：请启用四维模式并使用可计算的快度。';
+  }, { signal: controller.signal });
   observer.addEventListener('change', () => {
     const mode = Number(observer.value);
     if (mode === -1 || mode === 0 || mode === 1 || mode === 2 || mode === 3) parameters.observerMode = mode;
+    syncObserver();
   }, { signal: controller.signal });
   const controls = (Object.keys(PARAMETER_LIMITS) as NumericParameter[]).map((key) => {
     const input = document.querySelector<HTMLInputElement>(`[data-parameter="${key}"]`)!;
     const [min, max] = PARAMETER_LIMITS[key];
-    input.min = String(min);
-    input.max = String(max);
+    if (Number.isFinite(min)) input.min = String(min); else input.removeAttribute('min');
+    if (Number.isFinite(max)) input.max = String(max); else input.removeAttribute('max');
     input.value = String(parameters[key]);
     input.addEventListener('input', () => {
       setParameter(parameters, key, input.valueAsNumber);
@@ -59,12 +94,20 @@ export function bindControls(parameters: Parameters): { sync: () => void; dispos
   view.addEventListener('change', () => {
     const value = Number(view.value);
     if (value === 0 || value === 1 || value === 2 || value === 3 || value === 4 || value === 5) parameters.debugView = value;
+    if (value === 4) { parameters.nativeDebug = 3; diagnostic.value = '3'; }
   }, { signal: controller.signal });
   return {
     sync: () => {
       syncPreset();
+      syncObserver();
+      grid.value = String(parameters.spatialGrid);
+      diagnostic.value = String(parameters.nativeDebug);
+      for (const key of ['observerThrust','boostRapidity'] as const) {
+        const input = document.querySelector<HTMLInputElement>(`[data-parameter="${key}"]`)!;
+        if (document.activeElement !== input) input.value = String(parameters[key]);
+      }
       for (const { input, key } of controls) {
-        if (document.activeElement !== input) input.value = String(Math.round(parameters[key] * 1000) / 1000);
+        if (document.activeElement !== input) input.value = String(parameters[key]);
       }
     },
     dispose: () => controller.abort(),

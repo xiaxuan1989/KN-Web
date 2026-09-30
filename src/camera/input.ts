@@ -1,4 +1,4 @@
-import { Camera, type CameraMode } from './camera.ts';
+import { Camera, type CameraMode, type Vec3 } from './camera.ts';
 
 const MOVEMENT_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyR', 'KeyF', 'KeyQ', 'KeyE', 'ShiftLeft', 'ShiftRight']);
 
@@ -14,15 +14,23 @@ export class CameraInput {
   private readonly canvas: HTMLCanvasElement;
   private readonly camera: Camera;
   private readonly trajectoryActive: () => boolean;
+  private readonly observerActions: { toggle?: () => void; scroll?: (notches: number) => void };
 
   constructor(canvas: HTMLCanvasElement, camera: Camera, onModeChange: (mode: CameraMode) => void = () => {},
-    trajectoryActive: () => boolean = () => false) {
+    trajectoryActive: () => boolean = () => false,
+    observerActions: { toggle?: () => void; scroll?: (notches: number) => void } = {}) {
     this.canvas = canvas;
     this.camera = camera;
     this.trajectoryActive = trajectoryActive;
+    this.observerActions = observerActions;
     const options = { signal: this.controller.signal };
     canvas.addEventListener('keydown', (event) => {
       if (event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (event.code === 'KeyG') {
+        event.preventDefault();
+        if (!event.repeat) this.observerActions.toggle?.();
+        return;
+      }
       if (event.code === 'KeyT') {
         event.preventDefault();
         if (!event.repeat && !this.trajectoryActive()) {
@@ -106,7 +114,7 @@ export class CameraInput {
       // trackpad units to notches while retaining fractional input.
       const notches = event.deltaMode === 1 ? event.deltaY / 3
         : event.deltaY * (event.deltaMode === 2 ? canvas.clientHeight : 1) / 100;
-      camera.scroll(-Math.max(-10, Math.min(10, notches)));
+      this.scroll(-Math.max(-10, Math.min(10, notches)));
     }, { ...options, passive: false });
     canvas.addEventListener('blur', () => this.clear(), options);
     window.addEventListener('blur', () => this.clear(), options);
@@ -122,6 +130,15 @@ export class CameraInput {
       this.keys.has('ShiftLeft') || this.keys.has('ShiftRight'));
     this.camera.roll(axis('KeyE', 'KeyQ'), seconds);
     this.camera.update(seconds);
+  }
+
+  thrustAxes(): Vec3 {
+    return [['KeyD','KeyA'],['KeyR','KeyF'],['KeyW','KeyS']].map(([p,n])=>Number(this.keys.has(p))-Number(this.keys.has(n))) as Vec3;
+  }
+
+  private scroll(notches: number): void {
+    if (this.trajectoryActive()) this.observerActions.scroll?.(notches);
+    else this.camera.scroll(notches);
   }
 
   clear(cancelMotion = true): void {
@@ -177,7 +194,7 @@ export class CameraInput {
       // Spread by a factor of two -> half the orbit radius. Reuse the wheel's
       // 1.2-per-notch conversion and its free-flight speed behavior.
       const notches = Math.log(current.distance/previous.distance)/Math.log(1.2);
-      this.camera.scroll(Math.max(-10,Math.min(10,notches)));
+      this.scroll(Math.max(-10,Math.min(10,notches)));
     }
   }
 }

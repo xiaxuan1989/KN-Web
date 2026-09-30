@@ -42,7 +42,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let pixelUv = input.position.xy/game.resolution;
     let cameraUv = vec2<f32>(pixelUv.x,1.0-pixelUv.y);
     let direction = ScreenDirection(cameraUv);
-    var traced = TraceResult(direction, TRACE_ESCAPED, 0u, 0.0, 1.0);
+    var traced = TraceResult(direction, TRACE_ESCAPED, 0u, 0.0, vec4<f32>(0), 1.0);
     if (game.debugView == 3u || game.debugView == 4u) {
         traced = TraceScreen(cameraUv);
     }
@@ -55,9 +55,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     if (game.debugView == 3u || game.debugView == 4u) {
         if (traced.status == TRACE_INVALID) { return vec4<f32>(0.38, 0.05, 0.28, select(1.0,0.0,game.postEnabled > 0.5)); }
         if (game.debugView == 4u) {
-            if (traced.status == TRACE_STOPPED || traced.status == TRACE_OPAQUE || traced.energy < 0.0) { return vec4<f32>(0.0, 0.0, 0.0, 1.0); }
-            let heat = clamp(f32(traced.steps)/300.0, 0.0, 1.0);
-            return vec4<f32>(heat, 0.25, 1.0-heat, 1.0);
+            return SceneColor(traced.accumulated,0.0);
         }
         if (traced.status == TRACE_STOPPED || traced.status == TRACE_OPAQUE || traced.energy < 0.0) { return vec4<f32>(0.0, 0.0, 0.0, 1.0); }
         return BackgroundColor(skyColor, traced.energy);

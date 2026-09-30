@@ -1,6 +1,12 @@
 // NPGS BlackHole_prepass / BlackHole_composite. Native statuses are Sky=1,
 // Absorbed/Lost=0, Opaque=3. Observer rejection uses native opaque black.
 // Numerical failures retain Web diagnostic -2; exhausted/bound rays use 0.
+// Fixed when the pipeline is compiled, so disabled grid branches can be removed.
+// -1 preserves the native no-grid/no-near-horizon-pruning mode.
+override SPATIAL_GRID_MODE: i32 = 0;
+// Keep probes diagnostic-capable by default; production explicitly specializes
+// ordinary rendering to false so diagnostic state is absent from the ray loop.
+override DIAGNOSTICS_ENABLED: bool = true;
 @group(2) @binding(0) var prepassDistortion: texture_2d<f32>;
 @group(2) @binding(1) var prepassVolumetric: texture_2d<f32>;
 struct PrepassOutput {
@@ -13,16 +19,23 @@ fn TraceScreen(uv: vec2<f32>) -> TraceResult {
         direction = FragUvToDir(uv,tan(game.fovRadians*0.5),game.resolution);
     }
     let frame = ObserverTetrad(camera.observerU,camera.observerE1,camera.observerE2,camera.observerE3,camera.velocity.w > 0.5);
-    return TraceTetradRay(camera.position.xyz,direction,blackHole.spin,blackHole.charge,game.quality,i32(blackHole.observerMode),camera.velocity.xyz,frame);
+    var debug = 0;
+    if (DIAGNOSTICS_ENABLED) { debug = select(i32(blackHole.nativeDebug),3,game.debugView == 4u); }
+    let ray = TraceDiagnosticRay(camera.position.xyz,direction,blackHole.spin,blackHole.charge,game.quality,i32(blackHole.observerMode),camera.velocity.xyz,frame,SPATIAL_GRID_MODE,blackHole.blackHoleTime,debug);
+    return PackDiagnostic(ray,debug,TraceMaxStep(blackHole.spin,blackHole.charge),blackHole.backShiftMax);
 }
 fn EncodeTrace(ray: TraceResult) -> PrepassOutput {
     if (ray.status == TRACE_ESCAPED) {
         let shift = BackgroundFrequencyShift(ray.energy,blackHole.backShiftMax);
-        return PrepassOutput(vec4<f32>(ray.direction*shift,select(1.0,1.2,ray.energy < 0.0)),vec4<f32>(0));
+        return PrepassOutput(vec4<f32>(ray.direction*shift,select(1.0,1.2,ray.energy < 0.0)),ray.accumulated);
     }
-    if (ray.status == TRACE_OPAQUE) { return PrepassOutput(vec4<f32>(0,0,0,3),vec4<f32>(0,0,0,1)); }
+    if (ray.status == TRACE_OPAQUE) {
+        // Native DEBUG=4 retains its sky direction / shift before becoming opaque.
+        let shift = BackgroundFrequencyShift(ray.energy,blackHole.backShiftMax);
+        return PrepassOutput(vec4<f32>(ray.direction*shift,3),ray.accumulated);
+    }
     if (ray.status == TRACE_INVALID) { return PrepassOutput(vec4<f32>(0,0,0,-2),vec4<f32>(0)); }
-    return PrepassOutput(vec4<f32>(0),vec4<f32>(0));
+    return PrepassOutput(vec4<f32>(0),ray.accumulated);
 }
 @fragment
 fn fs_prepass(input: VertexOutput) -> PrepassOutput {
@@ -87,7 +100,7 @@ fn fs_composite(input: VertexOutput) -> @location(0) vec4<f32> {
     if (blackHole.fullTrace > 0.5 || NeedsRetrace(textureUv)) {
         let ray = TraceScreen(vec2<f32>(textureUv.x,1.0-textureUv.y));
         data = EncodeTrace(ray);
-        if (ray.status == TRACE_ESCAPED) {
+        if (ray.status == TRACE_ESCAPED || any(ray.direction != vec3<f32>(0))) {
             direction = ray.direction;
             shift = BackgroundFrequencyShift(ray.energy,blackHole.backShiftMax);
         }
@@ -100,7 +113,16 @@ fn fs_composite(input: VertexOutput) -> @location(0) vec4<f32> {
     let isSky = (status > 0.5 && status < 2.5) || status > 3.5;
     let sampleDirection = select(ScreenDirection(input.uv),direction,isSky && shift > 1e-9);
     // Derivatives are evaluated after divergent retracing reconverges.
-    let sky = textureSample(background,backgroundSampler,sampleDirection);
+    var sky = textureSample(background,backgroundSampler,sampleDirection);
+    // The override is uniform: diagnostic derivatives still run after tracing
+    // reconverges, and the entire block disappears from ordinary rendering.
+    if (DIAGNOSTICS_ENABLED) {
+        let view = FragUvToDir(textureUv,tan(game.fovRadians*0.5),game.resolution);
+        let magnification = DebugMagnification(dpdx(direction),dpdy(direction),dpdx(view),dpdy(view));
+        if (blackHole.nativeDebug == 6.0 && textureUv.y > 0.5) {
+            sky = vec4<f32>(sky.rgb*magnification,sky.a);
+        }
+    }
     if (status < -1.5) { return vec4<f32>(0.38,0.05,0.28,select(1.0,0.0,game.postEnabled > 0.5)); }
     var color = data.volumetric;
     if (color.a < 0.99 && isSky && abs(status-round(status)) < 0.1) {

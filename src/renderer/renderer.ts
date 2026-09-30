@@ -6,12 +6,15 @@ import hdrShader from '../shaders/hdr.wgsl?raw';
 import postShader from '../shaders/post.wgsl?raw';
 import { PostProcessing } from './post-processing.ts';
 import { TemporalState } from './temporal.ts';
-import { ObserverTrajectory } from '../physics/observer-trajectory.ts';
+import { advanceObserverFrame } from './observer-frame.ts';
+import { ObserverTrajectory, observerAcceleration, scrollObserverThrust, type BoostDirection } from '../physics/observer-trajectory.ts';
 import { prepassFrame } from './uniform-layout.ts';
 import fullscreenShader from '../shaders/fullscreen.wgsl?raw';
 import commonShader from '../shaders/common.wgsl?raw';
 import geometryShader from '../shaders/geometry.wgsl?raw';
 import coordinatesShader from '../shaders/coordinates.wgsl?raw';
+import diagnosticsShader from '../shaders/diagnostics.wgsl?raw';
+import gridShader from '../shaders/grid.wgsl?raw';
 import geodesicShader from '../shaders/geodesic.wgsl?raw';
 import { Background } from './background.ts';
 import { Camera, type CameraMode, type Vec3 } from '../camera/camera.ts';
@@ -57,6 +60,7 @@ export class Renderer {
   private lastStatsTime = -Infinity;
   private lastFrameTime?: number;
   private elapsedTime = 0;
+  private simulationTime = 0;
   private deltaTime = 0;
   private realDeltaTime = 0;
   private uniforms?: UniformBuffers;
@@ -69,7 +73,6 @@ export class Renderer {
   private temporalFrame = { weight: 1, jitter: [0, 0] as [number, number] };
   private postActive = false;
   private trajectory?: ObserverTrajectory;
-  private restoreOrbit = false;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -119,7 +122,7 @@ export class Renderer {
       this.callbacks.onLoading('星空已上传，正在编译透镜管线…');
 
       this.scene = await ScenePasses.create(device,this.uniforms.layout,this.background.layout,
-        [commonShader,geometryShader,coordinatesShader,geodesicShader,spectrumShader,hdrShader,fullscreenShader,prepassShader].join('\n'));
+        [commonShader,geometryShader,coordinatesShader,diagnosticsShader,gridShader, geodesicShader,spectrumShader,hdrShader,fullscreenShader,prepassShader].join('\n'));
       if (this.disposed) { this.scene.dispose(); return; }
 
       const post = await PostProcessing.create(device, format, postShader);
@@ -135,7 +138,10 @@ export class Renderer {
       if (this.disposed) return;
       await this.verifyUniforms();
       if (this.disposed) return;
-      this.input = new CameraInput(this.canvas, this.camera, this.callbacks.onCameraMode, () => this.parameters.observerMode === -1);
+      this.input = new CameraInput(this.canvas, this.camera, this.callbacks.onCameraMode, () => this.parameters.observerMode === -1, {
+        toggle: () => { this.parameters.observerMode = this.parameters.observerMode === -1 ? 0 : -1;this.prepareTrajectory(); },
+        scroll: notches => { this.parameters.observerThrust = scrollObserverThrust(this.parameters.observerThrust,notches); },
+      });
       this.callbacks.onCameraMode(this.camera.mode);
 
       const info = adapter.info;
@@ -219,6 +225,7 @@ export class Renderer {
       this.deltaTime = Math.min(0.05,this.realDeltaTime);
       this.lastFrameTime = time;
       this.elapsedTime += this.deltaTime;
+      this.simulationTime += this.parameters.timeRate*this.realDeltaTime;
       this.camera.setMass(this.parameters.massSolar);
       this.input?.update(cameraDeltaTime);
       this.draw();
@@ -238,25 +245,26 @@ export class Renderer {
     const requestedHeight = this.parameters.fitWindow ? this.canvas.clientHeight : this.parameters.renderHeight;
     const { full: [width,height], half } = renderSize(requestedWidth,requestedHeight,device.limits.maxTextureDimension2D);
     this.halfSize = half;
-    this.usePrepass = this.parameters.prepass && this.parameters.debugView === 3;
+    this.usePrepass = this.parameters.prepass && (this.parameters.debugView === 3 || this.parameters.debugView === 4);
     if (this.canvas.width !== width || this.canvas.height !== height) {
       this.canvas.width = width;
       this.canvas.height = height;
     }
     this.post!.resize(width, height);
     this.scene!.resize(...half);
-    this.postActive = this.parameters.postProcessing && (this.parameters.debugView === 3 || this.parameters.debugView === 5);
-    this.updateTrajectory();
-    this.temporalFrame = this.temporal.next(this.camera.basis(),this.parameters.massSolar,this.parameters.timeRate,
-      this.realDeltaTime,this.postActive && this.parameters.taa,
-      this.parameters.manualVelocity ? [this.parameters.velocityX,this.parameters.velocityY,this.parameters.velocityZ] : undefined);
+    this.postActive = this.parameters.postProcessing && (this.parameters.debugView === 3 || this.parameters.debugView === 4 || this.parameters.debugView === 5);
+    this.prepareTrajectory();
+    if (this.trajectory) this.trajectory.acceleration = observerAcceleration(this.input?.thrustAxes() ?? [0,0,0],this.camera.basis(),this.parameters.observerThrust);
+    this.temporalFrame = advanceObserverFrame(this.temporal,this.camera.basis(),this.parameters,
+      this.realDeltaTime,this.postActive && this.parameters.taa,this.trajectory);
     this.updateUniforms();
     this.uniforms!.upload();
     this.prepassUniforms!.upload();
 
     const encoder = device.createCommandEncoder({ label: 'Fullscreen frame' });
     this.scene!.encode(encoder,this.post!.scene.createView(),this.uniforms!.bindGroup,this.prepassUniforms!.bindGroup,
-      this.background!.bindGroup(this.parameters.background),this.usePrepass,this.parameters.debugView === 3);
+      this.background!.bindGroup(this.parameters.background),this.usePrepass,(this.parameters.debugView === 3 || this.parameters.debugView === 4),this.parameters.spatialGrid,
+      this.parameters.nativeDebug !== 0 || this.parameters.debugView === 4);
     this.post!.encode(encoder, this.context!.getCurrentTexture().createView(), this.parameters, this.temporalFrame.weight, this.postActive);
     device.queue.submit([encoder.finish()]);
   }
@@ -271,7 +279,7 @@ export class Renderer {
       temporalWeight: this.postActive && this.parameters.taa ? this.temporalFrame.weight : null,
       observerStatus: this.trajectory ? (this.trajectory.stopped ? '四维轨迹已到当前可追踪范围边界；重置相机可重新出发。'
         : `四维轨迹${this.parameters.timeRate === 0 ? '已暂停' : '运行中'} · 固有时间 ${this.trajectory.properTime.toFixed(3)} Rs/c`) : '',
-      time: this.elapsedTime, position: basis.position, direction: basis.forward,
+      time: this.elapsedTime, position: this.trajectory ? this.trajectory.state.slice(0,3) as Vec3 : basis.position, direction: basis.forward,
     });
     this.fpsFrames = 0;
     this.fpsElapsedMs = 0;
@@ -281,31 +289,33 @@ export class Renderer {
     const camera = this.camera.basis();
     const frame = { width: this.canvas.width, height: this.canvas.height, cameraVelocity: this.temporal.cameraVelocity(),
       tetrad: this.trajectory?.frame(camera),
-      time: this.elapsedTime, deltaTime: this.deltaTime, jitter: this.temporalFrame.jitter, postProcessing: this.postActive };
+      time: this.elapsedTime, simulationTime: this.simulationTime, deltaTime: this.deltaTime, jitter: this.temporalFrame.jitter, postProcessing: this.postActive };
     this.uniforms!.data.update(frame, this.parameters, camera);
     this.prepassUniforms!.data.update(prepassFrame(frame), this.parameters, camera);
   }
 
-  private updateTrajectory(): void {
+  boostObserver(direction: BoostDirection): boolean {
+    if (this.disposed || this.parameters.observerMode !== -1) return false;
+    this.prepareTrajectory();
+    const p = this.parameters;
+    return this.trajectory!.boost(p.boostRapidity,direction,this.camera.basis(),p.spin*.5,p.charge*.5);
+  }
+
+  private prepareTrajectory(): void {
     const p = this.parameters;
     if (p.observerMode !== -1) {
-      if (this.trajectory && this.restoreOrbit && this.camera.mode === 'free') {
-        this.camera.toggleMode();this.callbacks.onCameraMode(this.camera.mode);
+      if (this.trajectory) {
+        this.trajectory = undefined;
+        this.callbacks.onCameraMode(this.camera.mode);
       }
-      this.trajectory = undefined;
       return;
     }
     if (!this.trajectory) {
       this.trajectory = new ObserverTrajectory();
       const velocity: Vec3 = p.manualVelocity ? [p.velocityX,p.velocityY,p.velocityZ] : this.temporal.cameraVelocity();
       this.trajectory.initialize(this.camera.position,velocity,p.spin*.5,p.charge*.5);
-      this.restoreOrbit = this.camera.mode === 'orbit';
-      this.input?.clear();
-      if (this.restoreOrbit) this.camera.toggleMode();
+      this.camera.enterObserverMode();
       this.callbacks.onCameraMode(this.camera.mode);
-    } else {
-      this.trajectory.advance(this.realDeltaTime,p.timeRate,p.massSolar,p.spin*.5,p.charge*.5);
     }
-    this.camera.position = this.trajectory.state.slice(0,3) as Vec3;
   }
 }

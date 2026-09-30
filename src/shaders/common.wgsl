@@ -17,6 +17,10 @@ struct BlackHoleArgs {
     backShiftMax: f32,
     backgroundBrightness: f32,
     fullTrace: f32,
+    spatialGrid: f32,            // native iGrid -1 / 0 / 1 / 2; CPU selects matching pipeline
+    blackHoleTime: f32,          // c * GameTime / Rs, or transported KS time
+    nativeDebug: f32,            // original iDEBUG 0..6
+    reserved1: f32,
 };
 
 struct CameraArgs {

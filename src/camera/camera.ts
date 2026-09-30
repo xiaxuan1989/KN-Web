@@ -87,10 +87,14 @@ export class Camera {
   }
 
   // T uses the native strict >0.5s debounce. Programmatic observer switches
-  // use toggleMode directly, like the original SetCameraMode path.
+  // use enterObserverMode, like the original SetCameraMode path.
   requestModeChange(): boolean {
     if (this.sinceModeChange<=.5) return false;
     this.toggleMode();return true;
+  }
+  enterObserverMode(): void {
+    // Native SetCameraMode(false): retain orientation, inputs and T cooldown.
+    if (this.mode==='orbit') { this.freeFrame=this.basis();this.currentMode='free'; }
   }
   toggleMode(): void {
     this.sinceModeChange=0;

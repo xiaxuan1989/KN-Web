@@ -34,15 +34,32 @@
           <select id="debug-view">
             <option value="3">KN 引力透镜</option>
             <option value="5">原背景（无引力）</option>
-            <option value="4">积分步数 / 终止状态</option>
+            <option value="4">原步数诊断（DEBUG 3）</option>
             <option value="1">相机方向 + 参考网格</option>
             <option value="2">参数颜色（M / a* / Q*）</option>
             <option value="0">UV 渐变</option>
+          </select>
+          <label for="native-debug">原诊断模式</label>
+          <select id="native-debug">
+            <option value="0">0 · 正常渲染</option>
+            <option value="1">1 · 追踪终止原因</option>
+            <option value="2">2 · 初始动量</option>
+            <option value="3">3 · 步数 / MaxStep</option>
+            <option value="4">4 · 天空频移</option>
+            <option value="5">5 · 致密星表面（本场景无效果）</option>
+            <option value="6">6 · 半屏放大率</option>
           </select>
           <label for="background">背景</label>
           <select id="background">
             <option value="sky"> Universe 0</option>
             <option value="grid">方向网格</option>
+          </select>
+          <label for="spatial-grid">空间网格</label>
+          <select id="spatial-grid">
+            <option value="-1">-1 · 无网格，禁用近视界预剔除</option>
+            <option value="0">关闭</option>
+            <option value="1">模式 1 · 频移网格</option>
+            <option value="2">模式 2 · 彩色网格</option>
           </select>
           <label for="preset">黑洞预设</label>
           <select id="preset">
@@ -74,6 +91,17 @@
           <label for="prepass-enabled">半分辨率预计算</label><input id="prepass-enabled" data-toggle="prepass" type="checkbox" />
         </div>
         <details class="post-controls" open>
+          <summary>四维观者控制</summary>
+          <div class="controls">
+            <label for="observer-thrust">固有加速度 / (c²/Rs)</label><input id="observer-thrust" data-parameter="observerThrust" type="number" min="0" step="0.1" />
+            <label for="observer-charge">观者荷质参数 q/m</label><input id="observer-charge" data-parameter="observerCharge" type="number" step="0.1" />
+            <label for="boost-rapidity">瞬时快度增量 Δy</label><input id="boost-rapidity" data-parameter="boostRapidity" type="number" step="0.1" />
+          </div>
+          <div class="actions"><button type="button" data-boost="look">沿视线加速</button><button type="button" data-boost="velocity">沿速度方向加速</button></div>
+          <p id="boost-status" role="status"></p>
+          <p class="note">G 进入／退出四维模式。WASD / RF 施加推力，斜向保持相同推力大小；滚轮每档调整 1.2 倍。荷质参数作用于观者，区别于黑洞 Q*；默认 0。正／负快度沿选定方向加速／反向加速，静止时速度方向回退到视线方向。退出后恢复原普通相机位置并保持自由模式。</p>
+        </details>
+        <details class="post-controls" open>
           <summary>后处理</summary>
           <div class="controls">
             <label for="post-enabled">启用后处理</label><input id="post-enabled" data-toggle="postProcessing" type="checkbox" />
@@ -84,20 +112,22 @@
             <label for="gamma">Gamma</label><input id="gamma" data-parameter="gamma" type="number" step="0.1" />
             <label for="bloom-strength">泛光强度</label><input id="bloom-strength" data-parameter="bloomStrength" type="number" step="0.01" />
           </div>
-          <p class="note">沿用无抖动历史混合；权重由帧间隔、质量和时间倍率决定，运动超过原阈值时只用当前帧。参数变化会渐变，时间倍率用于历史混合与四维轨迹推进。关闭后处理可对照原图，诊断视图保持原色。</p>
+          <p class="note">沿用无抖动历史混合；权重由帧间隔、质量和时间倍率决定，运动超过原阈值时只用当前帧。参数变化会渐变，时间倍率用于历史混合与四维轨迹推进。关闭后处理可对照原图，原诊断同样经过后处理，可关闭后处理查看诊断原色。</p>
         </details>
         <div class="actions">
           <button id="reset-camera" type="button">重置相机</button>
           <button id="verify" type="button" disabled>校验 GPU 参数</button>
         </div>
         <p id="verification" role="status" aria-live="polite">等待 GPU 回读</p>
+        <p class="note">原诊断 1 显示当前已启用追踪分支的终止颜色；2 的红通道检查类光条件、绿蓝通道表示局部方向；3 使用 Count/MaxStep，超预算可超过红端；4 只给逃逸到天空的光线上色；6 在画面下半屏乘面积放大率。quality 可直接输入 10 或更高，FOV 支持 0° 与 180° 之间的值。</p>
         <p class="note">默认参数：质量 1490 万 M☉、自旋 0.998、电荷 0、水平 FOV 80°。启动与重置时，相机会逐渐靠近默认轨道。</p>
         <p class="note" id="input-help">点击画布后，T 切换自由视角。左键 / WASD 绕黑洞转，右键独立摆头，松手后惯性滑停；中键平滑回正，滚轮拉近 / 拉远黑洞，FOV 不变。</p>
         <p class="note" id="touch-help">触屏：单指拖动对应左键，双指同向拖动对应右键，双指捏合对应滚轮。轨道模式下，张开拉近、合拢拉远；可同时缩放和转动视角。</p>
+        <p class="note">空间网格沿光线叠加在固定 r 曲面上，随局部拖曳旋转并遮挡背景。模式 1 显示局部频移颜色，模式 2 用青／绿／红区分远处、外视界附近与内视界附近的曲面；内层是否可见由原视界规则决定。时间倍率可暂停或反向网格运动。</p>
         <p class="note">沿 NPGS 类光测地线追踪至 Universe 0 星空。切换「原背景」比较透镜畸变，切换「方向网格」观察临界曲线附近的多重成像。支持静态、落体、速度及四维轨迹观者，无吸积盘。颜色频移采用NPGS映射；关闭可对照贴图原色，背景亮度倍率仅在开启时生效。</p>
         <p class="note">进入视界、预算耗尽或回转过多均输出黑色（星空本身也有暗区）；观者无法保持类时速度时按原版输出黑色；紫色表示数值异常。超极限参数可追踪裸奇点的正 r 区域。</p>
         <p class="note" id="observer-status"></p>
-        <p class="note">落体模式改变当地观测标架，不自动移动相机。速度模式默认使用相机移动产生的平滑坐标速度；勾选「指定观者速度」可做固定位置对照，单位为 c。坐标速度是否可用由当地时空度规判断。四维模式将启用时的位置和速度作为初值，随后沿轨迹移动；鼠标调整头部朝向；此时 T 键与平移键暂停使用。时间倍率控制推进，设为 0 可暂停，重置相机重新出发。</p>
+        <p class="note">落体模式改变当地观测标架，不自动移动相机。速度模式默认使用相机移动产生的平滑坐标速度；勾选「指定观者速度」可做固定位置对照，单位为 c。坐标速度是否可用由当地时空度规判断。四维模式将启用时的位置和速度作为初值，随后沿轨迹移动；鼠标调整头部朝向；此时 T 暂停使用，WASD / RF 改为推力控制。时间倍率控制推进，设为 0 可暂停，重置相机重新出发。</p>
         <p class="note">默认随窗口调整输出尺寸和画面比例，预计算宽高各为输出的一半。不额外乘 Retina 像素倍率。取消「跟随窗口尺寸」可设置固定宽高。关闭预计算可对照全分辨率追踪；追踪预算随自旋、电荷和画质参数 quality 调整。距离用 Rs 归一化，固定相机 Rs 坐标时，单独改变太阳质量不会改变透镜形状。</p>
         <button id="retry" type="button" hidden>重新初始化</button>
       </section>

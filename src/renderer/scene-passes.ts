@@ -1,7 +1,12 @@
+import type { Parameters } from '../physics/parameters.ts';
+
+type GridMode = Parameters['spatialGrid'];
+const GRID_MODES: readonly GridMode[] = [-1, 0, 1, 2];
+
 export class ScenePasses {
   readonly prepassLayout: GPUBindGroupLayout;
   private readonly device: GPUDevice;
-  private pipelines: GPURenderPipeline[] = [];
+  private readonly pipelines = new Map<GridMode, readonly [GPURenderPipeline[], GPURenderPipeline[]]>();
   private textures: GPUTexture[] = [];
   private group?: GPUBindGroup;
   private size = '';
@@ -24,13 +29,25 @@ export class ScenePasses {
       { entry: 'fs_prepass', layouts: [uniforms], formats: ['rgba32float','rgba16float'] },
       { entry: 'fs_composite', layouts: [uniforms,background,scene.prepassLayout], formats: ['rgba16float'] },
     ];
-    const results = await Promise.allSettled(configs.map(async config => device.createRenderPipelineAsync({
-      label: config.entry, layout: device.createPipelineLayout({ bindGroupLayouts: config.layouts }),
+    // Cache grid × diagnostics variants once. Both passes switch together;
+    // ordinary rendering excludes diagnostic branches from the ray loop.
+    const variants = GRID_MODES.flatMap(mode => [false,true].flatMap(diagnostics =>
+      configs.map(config => ({ mode, diagnostics, ...config }))));
+    const results = await Promise.allSettled(variants.map(async config => device.createRenderPipelineAsync({
+      label: `${config.entry} / grid ${config.mode} / diagnostics ${config.diagnostics}`, layout: device.createPipelineLayout({ bindGroupLayouts: config.layouts }),
       vertex: { module, entryPoint: 'vs_main' },
-      fragment: { module, entryPoint: config.entry, targets: config.formats.map(format => ({ format: format as GPUTextureFormat })) },
+      fragment: { module, entryPoint: config.entry, constants: {
+        SPATIAL_GRID_MODE: config.mode, DIAGNOSTICS_ENABLED: Number(config.diagnostics),
+      },
+        targets: config.formats.map(format => ({ format: format as GPUTextureFormat })) },
     })));
     for (const result of results) if (result.status === 'rejected') throw result.reason;
-    scene.pipelines = results.map(result => (result as PromiseFulfilledResult<GPURenderPipeline>).value);
+    for (const [index, mode] of GRID_MODES.entries()) {
+      const start = index*2*configs.length;
+      const compiled = (offset: number) => results.slice(start+offset,start+offset+configs.length)
+        .map(result => (result as PromiseFulfilledResult<GPURenderPipeline>).value);
+      scene.pipelines.set(mode, [compiled(0),compiled(configs.length)]);
+    }
     return scene;
   }
 
@@ -45,17 +62,18 @@ export class ScenePasses {
     this.group = this.device.createBindGroup({ layout: this.prepassLayout, entries: this.textures.map((texture,binding) => ({ binding, resource: texture.createView() })) });
   }
 
-  encode(encoder: GPUCommandEncoder, target: GPUTextureView, full: GPUBindGroup, half: GPUBindGroup, background: GPUBindGroup, usePrepass: boolean, lensView = false): void {
+  encode(encoder: GPUCommandEncoder, target: GPUTextureView, full: GPUBindGroup, half: GPUBindGroup, background: GPUBindGroup, usePrepass: boolean, lensView = false, gridMode: GridMode = 0, diagnostics = false): void {
+    const pipelines = this.pipelines.get(gridMode)![diagnostics ? 1 : 0];
     if (usePrepass) {
       const pass = encoder.beginRenderPass({ label: 'Half resolution KN prepass', colorAttachments: this.textures.map(texture => ({
         view: texture.createView(), clearValue: { r: 0,g: 0,b: 0,a: 0 }, loadOp: 'clear', storeOp: 'store',
       })) });
-      pass.setPipeline(this.pipelines[1]); pass.setBindGroup(0,half); pass.draw(3); pass.end();
+      pass.setPipeline(pipelines[1]); pass.setBindGroup(0,half); pass.draw(3); pass.end();
     }
     const pass = encoder.beginRenderPass({ label: usePrepass ? 'Full resolution KN composite' : 'Full resolution trace / diagnostic',
       colorAttachments: [{ view: target, clearValue: { r: 0,g: 0,b: 0,a: 1 }, loadOp: 'clear', storeOp: 'store' }],
     });
-    pass.setPipeline(this.pipelines[usePrepass || lensView ? 2 : 0]); pass.setBindGroup(0,full); pass.setBindGroup(1,background);
+    pass.setPipeline(pipelines[usePrepass || lensView ? 2 : 0]); pass.setBindGroup(0,full); pass.setBindGroup(1,background);
     if (usePrepass || lensView) pass.setBindGroup(2,this.group!);
     pass.draw(3); pass.end();
   }

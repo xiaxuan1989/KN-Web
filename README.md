@@ -24,19 +24,23 @@ npm run dev
 支持条件及实测边界见 [浏览器兼容说明](docs/browser-compatibility.md)。
 
 ```sh
-npm test             # 63 项 CPU 测试：相机、输入、uniform、cubemap、异步清理与画布格式
+npm test             # 80 项 CPU 测试：相机、输入、uniform、cubemap、异步清理与画布格式
 npm run build        # TypeScript 检查 + Vite 静态构建
 npm run preview      # http://127.0.0.1:4173/
 npm run test:physics # GLSL / WGSL 实际 GPU 对照 + 网格离屏绘制
 npm run test:sky     # 星空像素 / mip 校验 + 三种黑洞与自旋 / Q 对照
 npm run test:camera   # 原 C++ FCamera 默认值、轨道 / 自由状态机回放
-npm run test:temporal # NPGS C++ / GLM 时间权重、运动判据和速度对照
+npm run test:temporal # 原时间公式对照 + 四维观者连续帧宿主状态对照
+npm run test:observer-temporal # 单独执行四维 TAA 的 480 帧原 C++ 对照
 npm run test:post    # 含上述回归 + 生产后处理 GPU 回放 + GLSL TAA / Bloom 对照
 npm run test:spectrum # 含上述回归 + GLSL 颜色频移对照与强频移 HDR 验证
 npm run test:trajectory # 原 C++ 四维轨迹积分 / 标架输运对照
-npm run test:observer # 含轨迹对照 + 五种观者初始动量的原 GLSL 对照
+npm run test:observer-controls # 原 C++ 键盘推力、滚轮和快度 boost 的 90 组对照
+npm run test:observer # 含轨迹及控制对照 + 五种观者初始动量的原 GLSL 对照
+npm run test:grid     # 772 组原 GLSL 空间网格函数 GPU 对照
+npm run test:diagnostics # 480 组原诊断公式 + 810 组退出 / 颜色控制流对照
 npm run test:trace    # 原 GLSL 预算、回转退出、终止打包与 WGSL 控制流对照
-npm run test:prepass  # 含上述回归 + 23 组预计算 / 合成场景及原 GLSL 初始采样对照
+npm run test:prepass  # 含上述回归 + 54 组预计算 / 合成场景及原 GLSL 初始采样对照
 ```
 
 `test:physics` 是可选开发验证工具，需要 macOS Metal、Rust/Cargo、Python 3、glslangValidator；不属于前端运行依赖。`test:sky` / `test:post` 另需 Python Pillow；TAA 宿主对照另需 clang++ 和 GLM（当前路径 `/opt/homebrew/include`）。原函数快照位于 `reference/`；星空资产位于 `public/cubemaps/universe0/`，校验清单位于 `reference/universe0.json`。
@@ -50,34 +54,40 @@ npm run test:prepass  # 含上述回归 + 23 组预计算 / 合成场景及原 G
 - 自由模式：左键原地转向，WASD 前后左右，RF 沿相机上方向升降，QE 滚转；右键摆头和中键回正仅在轨道模式生效。
 - 两种模式的绕转、摆头、自由转向与滚转均惯性滑停：松手后继续衰减剩余转角。采用实际生效的旋转系数 `1`、滚转系数 `1/3`。
 - T 有 0.5 秒冷却，保留待消费输入；自由切回轨道时，中心和轴按原状态机平滑归位。轨道模式滚轮平滑拉近 / 拉远黑洞；自由模式滚轮调整移动速度，均沿用每档 `1.2` 的倍率。**FOV 只通过面板调整**，滚轮不再缩放整个视野。
-- 「物理观者」支持静态、自由落体、速度、反向速度与四维轨迹。落体只改变当地标架；速度默认来自相机移动，也可手动指定 XYZ / c。四维模式从当前位置和速度出发自动推进，鼠标转头、QE 滚转，T / 平移暂停使用；时间倍率 0 暂停、负数反向，重置相机重新出发。
+- 「物理观者」支持静态、自由落体、速度、反向速度与四维轨迹。落体只改变当地标架；速度默认来自相机移动，也可手动指定 XYZ / c。四维模式从当前位置和速度出发自动推进；时间倍率 0 暂停、负数反向，重置相机重新出发。
+- **四维控制**：G 进入 / 退出，左键转头、QE 滚转，WASD / RF 施加固有加速度，斜向归一化；滚轮 / 捏合调推力（默认 1.5，每档 ×1.2），T 暂停使用。面板可调观者荷质参数，以及沿视线 / 速度方向施加正负快度 boost；暂停时也可 boost。退出回到原普通相机位置并保持自由模式。
 - 默认物理参数为质量 1490 万 M☉、自旋 0.998、电荷 0、水平 FOV 80°。鼠标灵敏度 0.2°/单位；自由速度初始 2.5 光年/秒，可用滚轮调整。
 - 参数框调整质量 M / M☉、无量纲 a* / Q*、quality 与输出尺寸模式。
-- 默认开启「跟随窗口尺寸」，输出及相机宽高比随窗口变化；关闭后可用「固定宽度 / 高度」指定像素数。预计算每轴取输出的一半并向下取整（至少 1 px）。关闭「半分辨率预计算」可对照全分辨率逐像素追踪。诊断视图始终以全分辨率绘制。
-- 「KN 引力透镜」显示追踪后的星空；「背景」可切换方向网格；「原背景」显示无引力对照；「积分步数 / 终止状态」检查积分情况。
+- 默认开启「跟随窗口尺寸」，输出及相机宽高比随窗口变化；关闭后可用「固定宽度 / 高度」指定像素数。预计算每轴取输出的一半并向下取整（至少 1 px）。关闭「半分辨率预计算」可对照全分辨率逐像素追踪。原诊断也遵循同一预计算 / 合成流程；UV、相机网格、参数颜色等 Web 辅助视图直接全尺寸绘制。
+- 「KN 引力透镜」显示追踪后的星空；「背景」可切换方向网格；「原背景」显示无引力对照；「原诊断模式」可选终止原因、初始动量、步数、频移和半屏放大率；致密星诊断在当前场景无效果。
+- quality 可直接输入 10 或更高，FOV 支持 0° 与 180° 之间的值；自旋 / 电荷支持超极限。频移上限范围 1–10000，观者 q/m 为 −2–2；数值及 Web 边界见 [诊断与参数范围](docs/diagnostics-alignment.md)。
+- 「空间网格」：默认关闭；模式 1 使用局部频移计算黑体颜色，模式 2 使用青 / 绿 / 红固定颜色。网格位于真实空间曲面，沿光线累计遮挡，与「背景 → 方向网格」独立。时间倍率控制网格旋转；四维模式使用轨迹 KS 坐标时。
 - 「黑洞预设」：Schwarzschild (0,0)、Kerr (0.95,0)、KN (0.8,0.4)，只修改 a* / Q*，保留相机。
 - 「颜色频移」默认开启：GLSL 光谱映射、Shift⁴、背景亮度倍率，频移来自光线初始守恒能量；默认上限 1.5、亮度倍率 2。关闭可对照原色；「原背景」使用 shift=1。
 - 「后处理」可独立开关 TAA / Bloom，调整曝光 EV、Gamma、泛光强度。沿用 NPGS 无抖动、时间相关的历史权重，运动超过原阈值时只使用当前帧。可调时间倍率，面板显示当前帧权重；关闭后处理查看原色。
 - 「重置相机」恢复原默认轨道角度（Theta=0°、Phi=45°），从 1 光年平滑靠近 0.0003 光年（默认质量下约 64.5 Rs）；「校验 GPU 参数」再次验证 CPU/WGSL uniform 快照。
 - 保留 Phase 0 的 UV、Phase 1 的相机网格和参数颜色视图用于回归检查。
 
-进入视界、预算耗尽或回转过多均按原 Absorbed/Lost 状态输出黑色，星空自身也有暗像素。紫色表示数值异常。现已支持五种观者、视界内及裸奇点的正 r 场景；静态能层 / 非类时速度按原版输出黑色，奇异数值仍为紫色。负 r 片与最大延拓未启用。
+正常模式下，进入视界、预算耗尽或回转过多均按原 Absorbed/Lost 状态输出黑色，星空自身也有暗像素。紫色表示数值异常。现已支持五种观者、视界内及裸奇点的正 r 场景；静态能层 / 非类时速度按原版输出黑色，奇异数值仍为紫色。负 r 片与最大延拓未启用。
 
 坐标按 Rs 归一化，几何 `M=0.5`；相机保持原光年世界位置，改变质量会同步换算 Rs 坐标，因而影响视角下的透镜尺度。quality 沿用原步长和预算公式，保留原严格 `Count > budget` 条件，已移除额外的 1024 步上限。默认输出跟随画布窗口尺寸（CSS 像素），不额外乘 Retina DPR，对齐 macOS 禁用 Retina framebuffer 缩放的行为。1280×960 是初始窗口尺寸，并非固定比例；Web 保留此值作为固定尺寸模式的初值。已移除 640 / 2048 px 输出限制；超过设备纹理限制时等比例缩小。尚未完成浏览器帧率基准或自适应优化。
 
 ## 验证现状
 
-- 63 项 CPU 测试、TypeScript 和生产构建通过，覆盖轨道 / 摆头、T 切换、自由平移 / 滚转、惯性衰减、平滑回正，以及滚轮距离倍率 / 平滑、朝向保持、自由移动速度、生命周期清理与画布格式。
+- 80 项 CPU 测试、TypeScript 和生产构建通过，覆盖轨道 / 摆头、T 切换、自由平移 / 滚转、惯性衰减、平滑回正，以及滚轮距离倍率 / 平滑、朝向保持、自由移动速度、生命周期清理与画布格式。
 - Apple M3 Pro / Metal：23 组GLSL vs WGSL 数值对照、31 条完整追踪探针、108 个六面朝向 / 颜色 / mip 探针、14 张完整管线离屏图通过。
 - 自旋反转的阴影逐像素镜像；固定 a*=0.8 加电荷后阴影缩小；近临界光线展示绕转行为。
 - 16 组后处理图、32 帧原生 GPU 回放通过；TAA 混合 / 重置、HDR 数值、Bloom、曝光、Gamma 与方向校验见 [Phase 6 报告](docs/phase6-post.md)。
 - Bloom 已对齐 `Bloom.comp.glsl` atlas 与 `ColorBlend.frag.glsl` bicubic 重建，移除额外阈值；51 次 HDR 阶段对照在本机逐值一致，最终显示最多相差 1/255，见 [Bloom 对齐记录](docs/bloom-alignment.md)。
-- TAA 已迁移原时间权重、无抖动及运动判据：495 组 C++ / GLM 对照通过，12 个 TAA 帧的 GLSL / WGSL RGB 回读一致；生命周期与 alpha 边界见 [TAA 对齐记录](docs/taa-alignment.md)。
+- TAA 已迁移原时间权重、无抖动及运动判据；四维模式按原宿主先计算权重，再积分和回写位置 / 速度。495 组公式、480 帧四维宿主对照及 132 帧 GLSL / WGSL 历史混合通过，见 [TAA 对齐记录](docs/taa-alignment.md)。
 - 追踪预算 / 终止状态：189 组原 GLSL 控制流对照通过；实际 RK4 压力探针可超过 1024 步，详见 [追踪预算对齐记录](docs/trace-budget-alignment.md)。
 - 默认参数与相机：702 个原 FCamera 状态快照对照通过，涵盖原启动距离、极点、中心 / 轴平滑、T 冷却和世界单位换算，见 [相机对齐记录](docs/camera-alignment.md)。
-- 观者：480 组原 GLSL 动量对照、38 组原 C++ 轨迹对照通过；每组轨迹推进 100 步。模式、范围与剩余边界见 [观者对齐记录](docs/observer-alignment.md)。
+- 观者：480 组原 GLSL 动量对照、38 组原 C++ 轨迹对照通过；每组轨迹推进 100 步；另有 90 组原 C++ 推力 / 带电 / 快度 boost 对照，见 [四维控制记录](docs/observer-controls-alignment.md)。模式、范围与剩余边界见 [观者对齐记录](docs/observer-alignment.md)。
+- 网格性能：按网格 -1 / 0 / 1 / 2 × 诊断关闭 / 开启编译并缓存专用管线，关闭时在编译期排除对应路径；见 [网格性能记录](docs/grid-pipeline-specialization.md) 和 [Chrome 诊断性能修复](docs/diagnostic-pipeline-specialization.md)。
+- 空间网格：772 组原 `GridColor` / `GridColorSimple` GPU 对照逐值一致；两种模式、时间变化、裸奇点、视界内和四维观者已接入预计算 / 合成回归，见 [空间网格记录](docs/spatial-grid-alignment.md)。
+- 诊断：480 组原 GLSL 公式对照最大缩放误差 1.19e-7；810 组冻结积分状态的控制流对照误差 0。原诊断 0–6 与高 quality / 窄 FOV 等场景已接入全 / 半流程，见 [诊断记录](docs/diagnostics-alignment.md)。
 - 实现边界、原生 GPU 渲染与误差记录见 [Phase 3 报告](docs/phase3-background.md) 和 [Phase 2 迁移报告](docs/phase2-port.md)。
-- 半分辨率流程：23 组 GPU 场景通过，1280×960 测试尺寸下约 2%–2.6% 像素重新追踪；奇数尺寸传参和像素中心采样已对齐；1,005,513 条初始光线与原 GLSL 回读逐值一致，手动插值、边缘判据及极小尺寸回归通过，见 [预计算迁移记录](docs/prepass-port.md)。
+- 半分辨率流程：54 组 GPU 场景通过，1280×960 测试尺寸下约 2%–2.6% 像素重新追踪；奇数尺寸传参和像素中心采样已对齐；1,260,873 条初始光线与原 GLSL 回读逐值一致，手动插值、边缘判据及极小尺寸回归通过，见 [预计算迁移记录](docs/prepass-port.md)。
 - **浏览器工具未连接**，ImageBitmap 上传、Canvas 显示、持续帧率、键鼠、resize、热更新与设备恢复仍待浏览器验收。原生 GPU 测试不能替代浏览器宿主测试。
 
 浏览器验收时检查：启动状态与 GPU 参数回读成功；切换三种物理参数组合；拖动和移动引起正常透镜变化；改变 quality 检查临界曲线和积分步数变化；默认窗口 resize 后输出 / 预计算尺寸与投影比例同步更新，固定模式仍保持指定宽高；切后台后停止移动且返回不跳跃；不支持 WebGPU 时有可读错误和重试入口。
@@ -88,6 +98,8 @@ npm run test:prepass  # 含上述回归 + 23 组预计算 / 合成场景及原 G
 src/shaders/geometry.wgsl       KN 几何、初始动量、Hamilton 与 RK4
 src/shaders/coordinates.wgsl    KS chart 变换、原水平 FOV 光线生成
 src/shaders/geodesic.wgsl       正 r 无盘、多种观者主追踪循环
+src/shaders/grid.wgsl           原空间网格相交、颜色及遮挡累计
+src/shaders/diagnostics.wgsl    原初始动量、步数、频移及放大率诊断
 src/shaders/prepass.wgsl       双输出预计算、手动插值、原边缘重追踪判据
 src/renderer/scene-passes.ts   半分辨率 / 全分辨率 pass 与纹理生命周期
 src/renderer/render-size.ts    窗口 / 固定输出与预计算尺寸

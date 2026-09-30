@@ -69,6 +69,16 @@ export class TemporalState {
   private frames = 0;
   private enabled = false;
   cameraVelocity(): Vec3 { return [...this.velocity]; }
+  // Application.cpp writes the transported KS position after calculating TAA,
+  // clears CameraVelocity, then stores the trajectory's world position in
+  // LastCameraWorldPos. Keep the ordinary camera itself separate from this state.
+  finishTrajectory(position: readonly number[], massSolar: number): void {
+    if (!this.previous) return;
+    const relative = position.slice(0,3).map(f) as Vec3;
+    const rs = radiusLightYears(massSolar);
+    this.previous = { ...this.previous, relative, world: relative.map(v => f(v*rs)) as Vec3 };
+    this.velocity = [0,0,0];
+  }
   reset(): void { this.previous = undefined; this.previousDt = 0; this.velocity = [0,0,0]; this.frames = 0; this.enabled = false; }
   next(camera: CameraBasis, massSolar: number, timeRate: number, dt: number, enabled: boolean, velocityOverride?: Vec3): { weight: number; jitter: [number,number] } {
     const current = temporalCamera(camera,massSolar);

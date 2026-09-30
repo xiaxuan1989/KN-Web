@@ -1,15 +1,17 @@
 import type { CameraBasis } from '../camera/camera.ts';
 import type { TetradFrame } from '../physics/observer-trajectory.ts';
+import { radiusLightYears } from './temporal.ts';
 import type { Parameters } from '../physics/parameters.ts';
 
 // Byte sizes and float-word offsets are documented in docs/uniform-layout.md.
-export const UNIFORM_SIZES = [32, 32, 144] as const;
+export const UNIFORM_SIZES = [32, 48, 144] as const;
 
 export interface FrameData {
   width: number;
   height: number;
   time: number;
   deltaTime: number;
+  simulationTime?: number; // original GameTime, seconds scaled by TimeRate
   tetrad?: TetradFrame;
   cameraVelocity?: readonly [number,number,number];
   jitter?: readonly [number, number];
@@ -26,7 +28,7 @@ export function prepassFrame(frame: FrameData): FrameData {
 export class UniformData {
   readonly game = new Float32Array(8);
   readonly gameIntegers = new Uint32Array(this.game.buffer);
-  readonly blackHole = new Float32Array(8);
+  readonly blackHole = new Float32Array(12);
   readonly camera = new Float32Array(36);
 
   update(frame: FrameData, parameters: Parameters, camera: CameraBasis): void {
@@ -34,7 +36,8 @@ export class UniformData {
       frame.deltaTime, parameters.quality, 0, Number(frame.postProcessing ?? false)]);
     this.gameIntegers[6] = parameters.debugView;
     this.blackHole.set([parameters.massSolar, parameters.spin, parameters.charge, parameters.observerMode,
-      Number(parameters.frequencyShift), parameters.backShiftMax, parameters.backgroundBrightness, Number(!parameters.prepass)]);
+      Number(parameters.frequencyShift), parameters.backShiftMax, parameters.backgroundBrightness, Number(!parameters.prepass), parameters.spatialGrid,
+      frame.tetrad?.position[3] ?? (frame.simulationTime ?? frame.time)*299792458/radiusLightYears(parameters.massSolar)/9460730472580800, parameters.debugView === 4 ? 3 : parameters.nativeDebug, 0]);
     this.camera.fill(0);
     this.camera.set([...camera.position, 0, ...camera.forward, 0, ...camera.right, frame.jitter?.[0] ?? 0, ...camera.up, frame.jitter?.[1] ?? 0]);
     this.camera.set([...(parameters.manualVelocity ? [parameters.velocityX,parameters.velocityY,parameters.velocityZ] : frame.cameraVelocity ?? [0,0,0]),0],16);

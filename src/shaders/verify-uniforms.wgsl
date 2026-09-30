@@ -1,4 +1,4 @@
-@group(1) @binding(0) var<storage, read_write> result: array<vec4<f32>, 13>;
+@group(1) @binding(0) var<storage, read_write> result: array<vec4<f32>, 14>;
 
 // Read named WGSL fields, not a raw GPU buffer copy. This checks the ABI.
 @compute @workgroup_size(1)
@@ -7,13 +7,14 @@ fn verify_uniforms() {
     result[1] = vec4<f32>(game.deltaTime, game.quality, f32(game.debugView), game.postEnabled);
     result[2] = vec4<f32>(blackHole.massSolar, blackHole.spin, blackHole.charge, blackHole.observerMode);
     result[3] = vec4<f32>(blackHole.frequencyShift, blackHole.backShiftMax, blackHole.backgroundBrightness, blackHole.fullTrace);
-    result[4] = camera.position;
-    result[5] = camera.forward;
-    result[6] = camera.right;
-    result[7] = camera.up;
-    result[8] = camera.velocity;
-    result[9] = camera.observerU;
-    result[10] = camera.observerE1;
-    result[11] = camera.observerE2;
-    result[12] = camera.observerE3;
+    result[4] = vec4<f32>(blackHole.spatialGrid,blackHole.blackHoleTime,blackHole.nativeDebug,blackHole.reserved1);
+    result[5] = camera.position;
+    result[6] = camera.forward;
+    result[7] = camera.right;
+    result[8] = camera.up;
+    result[9] = camera.velocity;
+    result[10] = camera.observerU;
+    result[11] = camera.observerE1;
+    result[12] = camera.observerE2;
+    result[13] = camera.observerE3;
 }

@@ -25,7 +25,7 @@ const inputHelp = document.querySelector<HTMLElement>('#input-help')!;
 document.querySelector<HTMLElement>('#browser-support')!.textContent = WEBGPU_REQUIREMENTS;
 const parameters = { ...DEFAULT_PARAMETERS };
 const camera = new Camera();
-const controls = bindControls(parameters);
+const controls = bindControls(parameters, { boost: direction => renderer?.boostObserver(direction) ?? false });
 const events = new AbortController();
 const panel = document.querySelector<HTMLElement>('#diagnostics-panel')!;
 const panelToggle = document.querySelector<HTMLButtonElement>('#panel-toggle')!;
@@ -80,7 +80,10 @@ function start(): void {
     onVerification: (message) => { verification.textContent = message; },
     onCameraMode: (mode) => {
       cameraMode.textContent = mode === 'orbit' ? '轨道模式' : '自由视角';
-      inputHelp.textContent = mode === 'orbit'
+      controls.sync();
+      inputHelp.textContent = parameters.observerMode === -1
+        ? 'G 退出四维模式，T 暂停使用。WASD / RF 施加推力，滚轮调推力；左键转头、QE 滚转。'
+        : mode === 'orbit'
         ? 'T 切换自由视角。左键 / WASD 绕黑洞转，右键独立摆头，松手后惯性滑停；中键平滑回正，滚轮拉近 / 拉远黑洞，FOV 不变。'
         : 'T 切换轨道模式。左键转向，QE 滚转，松手后惯性滑停；WASD / RF 平移，滚轮调整移动速度。返回轨道模式后，环绕中心和轴会平滑归位。';
     },

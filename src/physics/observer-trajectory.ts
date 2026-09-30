@@ -9,6 +9,24 @@ const dot = (a: readonly number[], b: readonly number[]): number => a.reduce((su
 const changeIndex = (v: readonly number[], g: Matrix): number[] => g.map(row => dot(row,v));
 const cross = (a: readonly number[], b: readonly number[]): number[] => [a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
 export interface TetradFrame { position: number[]; U: number[]; e1: number[]; e2: number[]; e3: number[]; outgoing: boolean }
+export type BoostDirection = 'look' | 'velocity';
+
+// Original accel_cam=(D-A,R-F,S-W), rotated by inverse camera orientation.
+export function observerAcceleration(axes: Vec3, basis: CameraBasis, thrust: number): Vec3 {
+  const f = Math.fround, length = f(Math.sqrt(axes.reduce((sum,x) => sum+x*x,0)));
+  if (length <= .1) return [0,0,0];
+  const local = axes.map(x => f(x*f(1/length)));
+  return [0,1,2].map(i => {
+    const x = f(f(basis.right[i])*local[0]), y = f(f(basis.up[i])*local[1]);
+    const z = f(f(basis.forward[i])*local[2]);
+    return f(f(f(x+y)+z)*f(thrust));
+  }) as Vec3;
+}
+
+export function scrollObserverThrust(thrust: number, notches: number): number {
+  const value=Math.fround(Math.fround(thrust)*Math.fround(Math.pow(Math.fround(1.2),Math.fround(notches))));
+  return Number.isFinite(value) && value>0 ? value : thrust;
+}
 
 export function observerMetric(X: readonly number[], a: number, Q: number, fade=1, sign=1, outgoing=false) {
   const [x,y,z]=X,a2=a*a,u=x*x+y*y+z*z-a2,S=Math.sqrt(u*u+4*a2*y*y);
@@ -130,6 +148,36 @@ export class ObserverTrajectory {
       for(let j=0;j<k;j++){const o=8+4*j,pr=product(off,o)/Math.max(1e-12,product(o,o));for(let i=0;i<4;i++)Y[off+i]-=pr*Y[o+i];}
       const n=1/Math.sqrt(Math.max(1e-12,Math.abs(product(off,off))));for(let i=0;i<4;i++)Y[off+i]*=n;
     }
+  }
+
+  // Application.cpp instantaneous rapidity boost, including its tangent fallback
+  // and the transformation of all three transported basis vectors.
+  boost(rapidity:number,direction:BoostDirection,basis:CameraBasis,a:number,Q:number): boolean {
+    const y=Math.fround(rapidity);
+    if(!Number.isFinite(y))return false;
+    const old=this.state.slice(),U=old.slice(4,8),g=observerMetric(old,a,Q,1,this.sign,this.outgoing).down;
+    const product=(A:number[],B:number[])=>{
+      let sum=0;for(let i=0;i<4;i++)for(let j=0;j<4;j++)sum+=g[i][j]*A[i]*B[j];return sum;
+    };
+    let E=[0,0,0,0];
+    const alongLook=()=>{for(let j=0;j<3;j++)for(let i=0;i<4;i++)E[i]+=Math.fround(basis.forward[j])*old[8+4*j+i];};
+    if(direction==='look')alongLook();
+    else {
+      const D=[...U.slice(0,3),0],du=product(D,U);E=D.map((x,i)=>x+du*U[i]);
+      const norm=product(E,E);
+      if(norm>1e-12)E=E.map(x=>x/Math.sqrt(norm));else alongLook();
+    }
+    const c=Math.cosh(y),s=Math.sinh(y);
+    for(let i=0;i<4;i++)this.state[4+i]=c*U[i]+s*E[i];
+    for(let j=0;j<3;j++) {
+      const d=product(old.slice(8+4*j,12+4*j),E);
+      for(let i=0;i<4;i++)this.state[8+4*j+i]+=(c-1)*d*E[i]+s*d*U[i];
+    }
+    this.orthonormalize(a,Q);
+    if(!this.state.every(Number.isFinite) || Math.abs(product(this.state.slice(4,8),this.state.slice(4,8))+1)>1e-5) {
+      this.state=old;return false;
+    }
+    return true;
   }
 
   switchCoordinates(a:number,Q:number): void {
