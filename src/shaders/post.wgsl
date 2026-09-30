@@ -39,16 +39,40 @@ fn Grab1(uv: vec2<f32>, octave: f32, offset: vec2<f32>) -> vec3<f32> {
     if (any(coord < vec2<f32>(0)) || any(coord > vec2<f32>(1))) { return vec3<f32>(0); }
     return ColorFetch(coord);
 }
+fn GrabSample(coord: vec2<f32>, resolution: vec2<f32>, scale: f32, samples: i32, i: i32, j: i32) -> vec3<f32> {
+    let delta = (vec2<f32>(f32(i),f32(j))/resolution+vec2<f32>(-f32(samples)*0.5)/resolution)*scale/f32(samples);
+    return ColorFetch(coord+delta);
+}
 fn GrabN(uv: vec2<f32>, octave: f32, offset: vec2<f32>, samples: i32) -> vec3<f32> {
     let scale = exp2(octave);
     let coord = (uv+offset)*scale;
     if (any(coord < vec2<f32>(0)) || any(coord > vec2<f32>(1))) { return vec3<f32>(0); }
     let resolution = vec2<f32>(textureDimensions(source));
     var color = vec3<f32>(0); var weights = 0.0;
-    for (var i=0; i<samples; i++) { for (var j=0; j<samples; j++) {
-        let delta = (vec2<f32>(f32(i),f32(j))/resolution+vec2<f32>(-f32(samples)*0.5)/resolution)*scale/f32(samples);
-        color += ColorFetch(coord+delta); weights += 1.0;
-    }}
+    // BloomAtlas only requests 4, 8 or 16 samples per axis. Unroll the inner
+    // loop to expose independent texture fetches, retaining i/j addition order.
+    for (var i=0; i<samples; i++) {
+        color += GrabSample(coord,resolution,scale,samples,i,0); weights += 1.0;
+        color += GrabSample(coord,resolution,scale,samples,i,1); weights += 1.0;
+        color += GrabSample(coord,resolution,scale,samples,i,2); weights += 1.0;
+        color += GrabSample(coord,resolution,scale,samples,i,3); weights += 1.0;
+        if (samples > 4) {
+            color += GrabSample(coord,resolution,scale,samples,i,4); weights += 1.0;
+            color += GrabSample(coord,resolution,scale,samples,i,5); weights += 1.0;
+            color += GrabSample(coord,resolution,scale,samples,i,6); weights += 1.0;
+            color += GrabSample(coord,resolution,scale,samples,i,7); weights += 1.0;
+        }
+        if (samples > 8) {
+            color += GrabSample(coord,resolution,scale,samples,i,8); weights += 1.0;
+            color += GrabSample(coord,resolution,scale,samples,i,9); weights += 1.0;
+            color += GrabSample(coord,resolution,scale,samples,i,10); weights += 1.0;
+            color += GrabSample(coord,resolution,scale,samples,i,11); weights += 1.0;
+            color += GrabSample(coord,resolution,scale,samples,i,12); weights += 1.0;
+            color += GrabSample(coord,resolution,scale,samples,i,13); weights += 1.0;
+            color += GrabSample(coord,resolution,scale,samples,i,14); weights += 1.0;
+            color += GrabSample(coord,resolution,scale,samples,i,15); weights += 1.0;
+        }
+    }
     return color/weights;
 }
 fn BloomAtlas(uv: vec2<f32>) -> vec4<f32> {
