@@ -21,7 +21,8 @@ fn TraceScreen(uv: vec2<f32>) -> TraceResult {
     let frame = ObserverTetrad(camera.observerU,camera.observerE1,camera.observerE2,camera.observerE3,camera.velocity.w > 0.5);
     var debug = 0;
     if (DIAGNOSTICS_ENABLED) { debug = select(i32(blackHole.nativeDebug),3,game.debugView == 4u); }
-    let ray = TraceDiagnosticRay(camera.position.xyz,direction,blackHole.spin,blackHole.charge,game.quality,i32(blackHole.observerMode),camera.velocity.xyz,frame,SPATIAL_GRID_MODE,blackHole.blackHoleTime,debug);
+    let settings = RadiationSettings(emission.geometry,emission.material,emission.color,emission.effects,emission.jet,emission.control);
+    let ray = TraceEmissionRay(camera.position.xyz,direction,blackHole.spin,blackHole.charge,game.quality,i32(blackHole.observerMode),camera.velocity.xyz,frame,SPATIAL_GRID_MODE,blackHole.blackHoleTime,debug,settings,blackHole.massSolar,uv,game.time);
     return PackDiagnostic(ray,debug,TraceMaxStep(blackHole.spin,blackHole.charge),blackHole.backShiftMax);
 }
 fn EncodeTrace(ray: TraceResult) -> PrepassOutput {

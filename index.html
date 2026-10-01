@@ -90,6 +90,35 @@
           <label for="render-height">固定高度 / px</label><input id="render-height" data-parameter="renderHeight" type="number" step="1" />
           <label for="prepass-enabled">半分辨率预计算</label><input id="prepass-enabled" data-toggle="prepass" type="checkbox" />
         </div>
+        <details class="post-controls" id="emission-controls">
+          <summary>吸积盘与喷流</summary>
+          <div class="actions"><button id="emission-preset" type="button">盘 + 喷流示例</button></div>
+          <div class="controls">
+            <label for="disk-enabled">启用吸积盘</label><input id="disk-enabled" data-toggle="diskEnabled" type="checkbox" />
+            <label for="jet-enabled">启用喷流</label><input id="jet-enabled" data-toggle="jetEnabled" type="checkbox" />
+            <label for="diskInnerRadius">盘内半径 / Rs</label><input id="diskInnerRadius" data-parameter="diskInnerRadius" type="number" step="0.1" />
+            <label for="diskOuterRadius">盘外半径 / Rs</label><input id="diskOuterRadius" data-parameter="diskOuterRadius" type="number" step="1" />
+            <label for="diskThickness">盘半厚度 / Rs</label><input id="diskThickness" data-parameter="diskThickness" type="number" step="0.05" />
+            <label for="diskHopper">漏斗厚度斜率</label><input id="diskHopper" data-parameter="diskHopper" type="number" step="0.05" />
+            <label for="matterMu">物质比荷 μ</label><input id="matterMu" data-parameter="matterMu" type="number" step="0.1" />
+            <label for="accretionRate">吸积率 / 爱丁顿吸积率</label><input id="accretionRate" data-parameter="accretionRate" type="number" step="any" />
+            <label for="diskBrightness">盘亮度倍率</label><input id="diskBrightness" data-parameter="diskBrightness" type="number" step="0.1" />
+            <label for="diskOpacity">盘不透明度倍率</label><input id="diskOpacity" data-parameter="diskOpacity" type="number" step="0.1" />
+            <label for="reddening">盘 / 喷流红化</label><input id="reddening" data-parameter="reddening" type="number" step="0.1" />
+            <label for="diskSaturation">盘饱和度指数</label><input id="diskSaturation" data-parameter="diskSaturation" type="number" step="0.1" />
+            <label for="blackbodyIntensityExponent">盘温度 → 亮度指数</label><input id="blackbodyIntensityExponent" data-parameter="blackbodyIntensityExponent" type="number" step="0.1" />
+            <label for="redshiftColorExponent">盘频移 → 温度指数</label><input id="redshiftColorExponent" data-parameter="redshiftColorExponent" type="number" step="0.1" />
+            <label for="redshiftIntensityExponent">盘频移 → 亮度指数</label><input id="redshiftIntensityExponent" data-parameter="redshiftIntensityExponent" type="number" step="0.1" />
+            <label for="photonRingBoost">光子环亮度增益</label><input id="photonRingBoost" data-parameter="photonRingBoost" type="number" step="0.1" />
+            <label for="photonRingTemperatureBoost">光子环温度增益</label><input id="photonRingTemperatureBoost" data-parameter="photonRingTemperatureBoost" type="number" step="0.1" />
+            <label for="boostRotation">自旋不对称增益</label><input id="boostRotation" data-parameter="boostRotation" type="number" step="0.1" />
+            <label for="jetRedshiftIntensityExponent">喷流频移 → 亮度指数</label><input id="jetRedshiftIntensityExponent" data-parameter="jetRedshiftIntensityExponent" type="number" step="0.1" />
+            <label for="jetBrightness">喷流亮度倍率</label><input id="jetBrightness" data-parameter="jetBrightness" type="number" step="0.1" />
+            <label for="jetSaturation">喷流饱和度指数</label><input id="jetSaturation" data-parameter="jetSaturation" type="number" step="0.1" />
+            <label for="jetShiftMax">喷流亮度频移上限</label><input id="jetShiftMax" data-parameter="jetShiftMax" type="number" step="0.1" />
+          </div>
+          <p class="note">默认保留原启动参数；点击示例启用盘与喷流。盘需内半径小于外半径，并有厚度或漏斗斜率；喷流需吸积率 ≥ 0.01 且亮度大于 0。盘面沿自旋赤道，绕转相机可比较倾角。盘和喷流随时间倍率演化，设为 0 暂停；各频移指数可设为 0 做对照。</p>
+        </details>
         <details class="post-controls" open>
           <summary>四维观者控制</summary>
           <div class="controls">
@@ -124,8 +153,8 @@
         <p class="note" id="input-help">点击画布后，T 切换自由视角。左键 / WASD 绕黑洞转，右键独立摆头，松手后惯性滑停；中键平滑回正，滚轮拉近 / 拉远黑洞，FOV 不变。</p>
         <p class="note" id="touch-help">触屏：单指拖动对应左键，双指同向拖动对应右键，双指捏合对应滚轮。轨道模式下，张开拉近、合拢拉远；可同时缩放和转动视角。</p>
         <p class="note">空间网格沿光线叠加在固定 r 曲面上，随局部拖曳旋转并遮挡背景。模式 1 显示局部频移颜色，模式 2 用青／绿／红区分远处、外视界附近与内视界附近的曲面；内层是否可见由原视界规则决定。时间倍率可暂停或反向网格运动。</p>
-        <p class="note">沿 NPGS 类光测地线追踪至 Universe 0 星空。切换「原背景」比较透镜畸变，切换「方向网格」观察临界曲线附近的多重成像。支持静态、落体、速度及四维轨迹观者，无吸积盘。颜色频移采用NPGS映射；关闭可对照贴图原色，背景亮度倍率仅在开启时生效。</p>
-        <p class="note">进入视界、预算耗尽或回转过多均输出黑色（星空本身也有暗区）；观者无法保持类时速度时按原版输出黑色；紫色表示数值异常。超极限参数可追踪裸奇点的正 r 区域。</p>
+        <p class="note">沿 NPGS 类光测地线追踪至 Universe 0 星空。切换「原背景」比较透镜畸变，切换「方向网格」观察临界曲线附近的多重成像。支持静态、落体、速度及四维轨迹观者，吸积盘与喷流可在面板独立开启。背景颜色频移采用 NPGS 映射；关闭可对照贴图原色，背景亮度倍率仅在开启时生效。</p>
+        <p class="note">进入视界、预算耗尽或回转过多停止背景采样，保留已累计的盘、喷流与网格辐射（星空本身也有暗区）；观者无法保持类时速度时按原版输出黑色；紫色表示数值异常。超极限参数可追踪裸奇点的正 r 区域。</p>
         <p class="note" id="observer-status"></p>
         <p class="note">落体模式改变当地观测标架，不自动移动相机。速度模式默认使用相机移动产生的平滑坐标速度；勾选「指定观者速度」可做固定位置对照，单位为 c。坐标速度是否可用由当地时空度规判断。四维模式将启用时的位置和速度作为初值，随后沿轨迹移动；鼠标调整头部朝向；此时 T 暂停使用，WASD / RF 改为推力控制。时间倍率控制推进，设为 0 可暂停，重置相机重新出发。</p>
         <p class="note">默认随窗口调整输出尺寸和画面比例，预计算宽高各为输出的一半。不额外乘 Retina 像素倍率。取消「跟随窗口尺寸」可设置固定宽高。关闭预计算可对照全分辨率追踪；追踪预算随自旋、电荷和画质参数 quality 调整。距离用 Rs 归一化，固定相机 Rs 坐标时，单独改变太阳质量不会改变透镜形状。</p>

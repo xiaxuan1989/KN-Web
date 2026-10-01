@@ -1,4 +1,4 @@
-// Positive-r, no-disk NPGS TraceRay slice, observer modes -1/0/1/2/3 and spatial grids.
+// Positive-r, disk / jet NPGS TraceRay slice, observer modes -1/0/1/2/3 and spatial grids.
 // Signed-sheet crossings remain outside this scene.
 const TRACE_BOUNDARY: f32 = 501.0;
 // Native 0 = Absorbed/Lost: includes horizon stops, exhausted budget and bound rays.
@@ -10,7 +10,7 @@ const TRACE_INVALID: u32 = 255u;
 struct TraceResult {
     direction: vec3<f32>, status: u32,
     steps: u32, nullError: f32,
-    accumulated: vec4<f32>, // premultiplied grid emission and opacity
+    accumulated: vec4<f32>, // premultiplied radiation / grid emission and opacity
     energy: f32, // -P_cov.w, normalized observer photon energy is 1
 };
 
@@ -45,9 +45,11 @@ fn TraceStepBudget(spin: f32, charge: f32, quality: f32) -> u32 {
 
 struct ObserverTetrad { U: vec4<f32>, e1: vec4<f32>, e2: vec4<f32>, e3: vec4<f32>, outgoing: bool };
 
-fn TraceDiagnosticRay(origin: vec3<f32>, direction: vec3<f32>, spin: f32, charge: f32, quality: f32, mode: i32, velocity: vec3<f32>, frame: ObserverTetrad, gridMode: i32, gridTime: f32, debug: i32) -> TraceResult {
+fn TraceEmissionRay(origin: vec3<f32>, direction: vec3<f32>, spin: f32, charge: f32, quality: f32, mode: i32, velocity: vec3<f32>, frame: ObserverTetrad, gridMode: i32, gridTime: f32, debug: i32, settings: RadiationSettings, massSolar: f32, rayUv: vec2<f32>, renderTime: f32) -> TraceResult {
     var result = TraceResult(vec3<f32>(0.0), TRACE_STOPPED, 0u, 0.0, vec4<f32>(0), 1.0);
-    let boundary = max(TRACE_BOUNDARY,spin*2.0);
+    let emitting = RADIATION_ENABLED && (HasDisk(settings) || HasJet(settings));
+    var boundary = max(TRACE_BOUNDARY,spin*2.0);
+    if (emitting) { boundary = max(boundary,settings.geometry.y+1.0); }
     let a = spin*CONST_M;
     let Q = charge*CONST_M;
     let discriminant = 0.25-a*a-Q*Q;
@@ -95,6 +97,15 @@ fn TraceDiagnosticRay(origin: vec3<f32>, direction: vec3<f32>, spin: f32, charge
     result.energy = E;
     let shellLimit = ProgradePhotonRadius(spin, Q)-0.001;
     let originalLimit = TraceStepBudget(spin,charge,quality);
+    var rayMarchPhase = 0.0;
+    var thermodynamics = vec2<f32>(0);
+    var thetaInShell = 0.0;
+    var ingoingState = state;
+    if (emitting) {
+        rayMarchPhase = RandomStep(rayUv,renderTime);
+        thermodynamics = DiskThermodynamics(massSolar,spin,settings.material.x,settings.material.y);
+        if (outgoing) { ingoingState = transformKerrSchild_YSpin(state,1.0,CONST_M,a,Q,true); }
+    }
     var lastDr = 0.0;
     var lastR = cameraR;
     var crossedInnerOutward = false;
@@ -157,7 +168,8 @@ fn TraceDiagnosticRay(origin: vec3<f32>, direction: vec3<f32>, spin: f32, charge
         var preCeiling = min(cameraR-0.001, termination+0.2);
         if (crossedInnerOutward) { preCeiling = inner+0.2; }
         if (crossedOuterOutward) { preCeiling = outer+0.2; }
-        let pruningCeiling = min(preCeiling,shellLimit);
+        var pruningCeiling = min(preCeiling,shellLimit);
+        if (emitting) { pruningCeiling = min(pruningCeiling,settings.geometry.x); }
         // Native iGrid disables near-horizon pruning so grid segments can emit.
         if (gridMode == 0 && !naked && geo.r < pruningCeiling && currentDr > 1e-4) {
             if (debug == 1) { result.accumulated += vec4<f32>(0,0,0.3,0); }
@@ -190,6 +202,10 @@ fn TraceDiagnosticRay(origin: vec3<f32>, direction: vec3<f32>, spin: f32, charge
             }
         }
         let previous = state;
+        // Native ring boost uses the pre-step geometry, then updates lastR.
+        let shellDeltaR = geo.r-lastR;
+        let shellMeanR = 0.5*lastR+0.5*geo.r;
+        let shellR = geo.r;
         lastR = geo.r;
         state = StepGeodesicRK4_Optimized(state, E, -dLambda/quality, a, Q, fade, 1.0, outgoing, k1);
         result.steps = count+1u;
@@ -203,6 +219,23 @@ fn TraceDiagnosticRay(origin: vec3<f32>, direction: vec3<f32>, spin: f32, charge
         }
         geo = ComputeGeometryScalars(state.X.xyz, a, Q, fade, 1.0, outgoing);
         result.nullError = abs(dot(state.P, RaiseIndex(state.P, geo)))/(dot(state.P, state.P)+1e-20);
+        if (emitting) {
+            let lastIngoing = ingoingState;
+            ingoingState = state;
+            if (outgoing) { ingoingState = transformKerrSchild_YSpin(state,1.0,CONST_M,a,Q,true); }
+            let stepVector = ingoingState.X.xyz-lastIngoing.X.xyz;
+            let stepLength = length(stepVector);
+            let drdl = shellDeltaR/max(stepLength,1e-9);
+            let rotfact = clamp(1.0+settings.effects.w*dot(-stepVector,
+                vec3<f32>(ingoingState.X.z,0,-ingoingState.X.x))/stepLength/
+                length(ingoingState.X.xz)*clamp(spin,-1.0,1.0),0.0,2.0);
+            if (shellR < 1.6+pow(abs(spin),0.666666)) {
+                thetaInShell += stepLength/shellMeanR/(1.0+1000.0*drdl*drdl)*rotfact*
+                    clamp(11.0-10.0*(spin*spin+charge*charge),0.0,1.0);
+            }
+            result.accumulated = AccumulateRadiation(result.accumulated,state,previous,E,a,Q,
+                outgoing,thetaInShell,&rayMarchPhase,thermodynamics,gridTime,renderTime,settings);
+        }
         // Original post-step horizon checks also stop inward motion between
         // horizons and rays returning after escaping an inner starting region.
         let horizonStop = !naked && ((lastR > outer && geo.r < outer) || (lastR > inner && geo.r < inner) ||
@@ -218,6 +251,11 @@ fn TraceDiagnosticRay(origin: vec3<f32>, direction: vec3<f32>, spin: f32, charge
         if (!naked && termination != -1.0 && geo.r < termination) { return result; }
     }
     return result;
+}
+
+fn TraceDiagnosticRay(origin: vec3<f32>, direction: vec3<f32>, spin: f32, charge: f32, quality: f32, mode: i32, velocity: vec3<f32>, frame: ObserverTetrad, gridMode: i32, gridTime: f32, debug: i32) -> TraceResult {
+    return TraceEmissionRay(origin,direction,spin,charge,quality,mode,velocity,frame,
+        gridMode,gridTime,debug,RadiationSettings(),14900000.0,vec2<f32>(0),0.0);
 }
 
 // Preserve the static helper used by existing physical probes.

@@ -57,8 +57,14 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
         if (game.debugView == 4u) {
             return SceneColor(traced.accumulated,0.0);
         }
-        if (traced.status == TRACE_STOPPED || traced.status == TRACE_OPAQUE || traced.energy < 0.0) { return vec4<f32>(0.0, 0.0, 0.0, 1.0); }
-        return BackgroundColor(skyColor, traced.energy);
+        var accumulated = traced.accumulated;
+        let shift = BackgroundFrequencyShift(traced.energy,blackHole.backShiftMax);
+        if (accumulated.a < 0.99 && traced.status == TRACE_ESCAPED) {
+            let transmission = 1.0-accumulated.a;
+            accumulated += 0.9999999*MapBackground(skyColor,shift)*vec4<f32>(
+                pow(transmission,1.0),pow(transmission,1.6),pow(transmission,2.5),1);
+        }
+        return SceneColor(accumulated,select(1.0,shift,blackHole.frequencyShift > 0.5));
     }
     if (game.debugView == 5u) { return BackgroundColor(skyColor, 1.0); }
     var color = vec3<f32>(0.5) + 0.5 * direction;

@@ -6,7 +6,7 @@ const GRID_MODES: readonly GridMode[] = [-1, 0, 1, 2];
 export class ScenePasses {
   readonly prepassLayout: GPUBindGroupLayout;
   private readonly device: GPUDevice;
-  private readonly pipelines = new Map<GridMode, readonly [GPURenderPipeline[], GPURenderPipeline[]]>();
+  private readonly pipelines = new Map<string, GPURenderPipeline[]>();
   private textures: GPUTexture[] = [];
   private group?: GPUBindGroup;
   private size = '';
@@ -29,24 +29,23 @@ export class ScenePasses {
       { entry: 'fs_prepass', layouts: [uniforms], formats: ['rgba32float','rgba16float'] },
       { entry: 'fs_composite', layouts: [uniforms,background,scene.prepassLayout], formats: ['rgba16float'] },
     ];
-    // Cache grid × diagnostics variants once. Both passes switch together;
-    // ordinary rendering excludes diagnostic branches from the ray loop.
+    // Cache grid × diagnostics × radiation variants once. Both passes switch together;
+    // disabled radiation and diagnostics are removed from the ray loop at compile time.
     const variants = GRID_MODES.flatMap(mode => [false,true].flatMap(diagnostics =>
-      configs.map(config => ({ mode, diagnostics, ...config }))));
+      [false,true].flatMap(radiation => configs.map(config => ({ mode, diagnostics, radiation, ...config })))));
     const results = await Promise.allSettled(variants.map(async config => device.createRenderPipelineAsync({
-      label: `${config.entry} / grid ${config.mode} / diagnostics ${config.diagnostics}`, layout: device.createPipelineLayout({ bindGroupLayouts: config.layouts }),
+      label: `${config.entry} / grid ${config.mode} / diagnostics ${config.diagnostics} / radiation ${config.radiation}`, layout: device.createPipelineLayout({ bindGroupLayouts: config.layouts }),
       vertex: { module, entryPoint: 'vs_main' },
       fragment: { module, entryPoint: config.entry, constants: {
-        SPATIAL_GRID_MODE: config.mode, DIAGNOSTICS_ENABLED: Number(config.diagnostics),
+        SPATIAL_GRID_MODE: config.mode, DIAGNOSTICS_ENABLED: Number(config.diagnostics), RADIATION_ENABLED: Number(config.radiation),
       },
         targets: config.formats.map(format => ({ format: format as GPUTextureFormat })) },
     })));
     for (const result of results) if (result.status === 'rejected') throw result.reason;
-    for (const [index, mode] of GRID_MODES.entries()) {
-      const start = index*2*configs.length;
-      const compiled = (offset: number) => results.slice(start+offset,start+offset+configs.length)
-        .map(result => (result as PromiseFulfilledResult<GPURenderPipeline>).value);
-      scene.pipelines.set(mode, [compiled(0),compiled(configs.length)]);
+    for (let index = 0; index < variants.length; index += configs.length) {
+      const { mode, diagnostics, radiation } = variants[index];
+      scene.pipelines.set(`${mode},${diagnostics},${radiation}`,
+        results.slice(index,index+configs.length).map(result => (result as PromiseFulfilledResult<GPURenderPipeline>).value));
     }
     return scene;
   }
@@ -62,8 +61,8 @@ export class ScenePasses {
     this.group = this.device.createBindGroup({ layout: this.prepassLayout, entries: this.textures.map((texture,binding) => ({ binding, resource: texture.createView() })) });
   }
 
-  encode(encoder: GPUCommandEncoder, target: GPUTextureView, full: GPUBindGroup, half: GPUBindGroup, background: GPUBindGroup, usePrepass: boolean, lensView = false, gridMode: GridMode = 0, diagnostics = false): void {
-    const pipelines = this.pipelines.get(gridMode)![diagnostics ? 1 : 0];
+  encode(encoder: GPUCommandEncoder, target: GPUTextureView, full: GPUBindGroup, half: GPUBindGroup, background: GPUBindGroup, usePrepass: boolean, lensView = false, gridMode: GridMode = 0, diagnostics = false, radiation = false): void {
+    const pipelines = this.pipelines.get(`${gridMode},${diagnostics},${radiation}`)!;
     if (usePrepass) {
       const pass = encoder.beginRenderPass({ label: 'Half resolution KN prepass', colorAttachments: this.textures.map(texture => ({
         view: texture.createView(), clearValue: { r: 0,g: 0,b: 0,a: 0 }, loadOp: 'clear', storeOp: 'store',

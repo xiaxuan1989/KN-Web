@@ -1,4 +1,4 @@
-import { PARAMETER_LIMITS, setParameter, type NumericParameter, type Parameters } from '../physics/parameters.ts';
+import { PARAMETER_LIMITS, applyEmissionPreset, setParameter, type NumericParameter, type Parameters } from '../physics/parameters.ts';
 
 export function bindControls(parameters: Parameters, actions: { boost?: (direction: 'look' | 'velocity') => boolean } = {}): { sync: () => void; dispose: () => void } {
   const controller = new AbortController();
@@ -61,7 +61,7 @@ export function bindControls(parameters: Parameters, actions: { boost?: (directi
     }
   };
   syncSizeControls();
-  for (const key of ['manualVelocity', 'fitWindow', 'prepass', 'frequencyShift', 'postProcessing', 'taa', 'bloom'] as const) {
+  for (const key of ['diskEnabled', 'jetEnabled', 'manualVelocity', 'fitWindow', 'prepass', 'frequencyShift', 'postProcessing', 'taa', 'bloom'] as const) {
     const input = document.querySelector<HTMLInputElement>(`[data-toggle="${key}"]`)!;
     input.checked = parameters[key];
     input.addEventListener('change', () => {
@@ -69,6 +69,13 @@ export function bindControls(parameters: Parameters, actions: { boost?: (directi
       if (key === 'fitWindow') syncSizeControls();
     }, { signal: controller.signal });
   }
+  document.querySelector<HTMLButtonElement>('#emission-preset')!.addEventListener('click', () => {
+    applyEmissionPreset(parameters);
+    for (const { input, key } of controls) input.value = String(parameters[key]);
+    for (const key of ['diskEnabled','jetEnabled'] as const) {
+      document.querySelector<HTMLInputElement>(`[data-toggle="${key}"]`)!.checked = parameters[key];
+    }
+  }, { signal: controller.signal });
   const view = document.querySelector<HTMLSelectElement>('#debug-view')!;
   const background = document.querySelector<HTMLSelectElement>('#background')!;
   background.value = parameters.background;

@@ -38,3 +38,14 @@ struct CameraArgs {
 @group(0) @binding(0) var<uniform> game: GameArgs;
 @group(0) @binding(1) var<uniform> blackHole: BlackHoleArgs;
 @group(0) @binding(2) var<uniform> camera: CameraArgs;
+
+// Phase 1A / 1B: independent emission buffer preserves existing geometry ABI.
+struct EmissionArgs {
+    geometry: vec4<f32>,
+    material: vec4<f32>,
+    color: vec4<f32>,
+    effects: vec4<f32>,
+    jet: vec4<f32>,
+    control: vec4<f32>,
+};
+@group(0) @binding(3) var<uniform> emission: EmissionArgs;

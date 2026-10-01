@@ -3,6 +3,28 @@ import { radiusLightYears } from '../renderer/temporal.ts';
 export type DebugView = 0 | 1 | 2 | 3 | 4 | 5;
 
 export interface Parameters {
+  diskEnabled: boolean;
+  jetEnabled: boolean;
+  diskInnerRadius: number;
+  diskOuterRadius: number;
+  diskThickness: number;
+  diskHopper: number;
+  matterMu: number;
+  accretionRate: number;
+  diskBrightness: number;
+  diskOpacity: number;
+  reddening: number;
+  diskSaturation: number;
+  blackbodyIntensityExponent: number;
+  redshiftColorExponent: number;
+  redshiftIntensityExponent: number;
+  photonRingBoost: number;
+  photonRingTemperatureBoost: number;
+  boostRotation: number;
+  jetRedshiftIntensityExponent: number;
+  jetBrightness: number;
+  jetSaturation: number;
+  jetShiftMax: number;
   nativeDebug: 0 | 1 | 2 | 3 | 4 | 5 | 6;
   spatialGrid: -1 | 0 | 1 | 2;
   observerMode: -1 | 0 | 1 | 2 | 3;
@@ -39,6 +61,15 @@ export interface Parameters {
 // Match NPGS: mass in solar masses, spin a* and charge Q* dimensionless.
 // GPU positions are in Rs (CONST_M = 0.5); camera motion preserves native world ly.
 export const DEFAULT_PARAMETERS: Readonly<Parameters> = Object.freeze({
+  // Native Application.cpp startup configuration: inner > outer and rate below
+  // the jet visibility threshold. Preserve these values and the existing sky.
+  diskEnabled: false, jetEnabled: false,
+  diskInnerRadius: 200, diskOuterRadius: 25, diskThickness: 0.75, diskHopper: 0.4,
+  matterMu: 1, accretionRate: 1e-12, diskBrightness: 1, diskOpacity: 0.5,
+  reddening: 0.3, diskSaturation: 0.5, blackbodyIntensityExponent: 1,
+  redshiftColorExponent: 1, redshiftIntensityExponent: 4,
+  photonRingBoost: 0, photonRingTemperatureBoost: 0, boostRotation: 0,
+  jetRedshiftIntensityExponent: 4, jetBrightness: 1, jetSaturation: 0, jetShiftMax: 3,
   nativeDebug: 0, spatialGrid: 0,
   observerMode: 0, manualVelocity: false, velocityX: 0, velocityY: 0, velocityZ: 0,
   observerThrust: 1.5, observerCharge: 0, boostRapidity: 0,
@@ -58,6 +89,16 @@ export const DEFAULT_PARAMETERS: Readonly<Parameters> = Object.freeze({
 // Native throttle controls have no fixed caps. Zero endpoints for mass,
 // quality and FOV are excluded below; Web-only display controls retain their ranges.
 export const PARAMETER_LIMITS = {
+  diskInnerRadius: [0, Infinity], diskOuterRadius: [0, Infinity],
+  diskThickness: [0, Infinity], diskHopper: [0, Infinity],
+  matterMu: [0, Infinity], accretionRate: [0, Infinity],
+  diskBrightness: [0, Infinity], diskOpacity: [0, Infinity],
+  reddening: [0, Infinity], diskSaturation: [0, Infinity],
+  blackbodyIntensityExponent: [0, Infinity], redshiftColorExponent: [0, Infinity],
+  redshiftIntensityExponent: [0, Infinity],
+  photonRingBoost: [0, 10], photonRingTemperatureBoost: [0, 10], boostRotation: [-Infinity, Infinity],
+  jetRedshiftIntensityExponent: [0, Infinity], jetBrightness: [0, Infinity],
+  jetSaturation: [0, Infinity], jetShiftMax: [0, Infinity],
   observerCharge: [-2, 2],
   velocityX: [-Infinity, Infinity], velocityY: [-Infinity, Infinity], velocityZ: [-Infinity, Infinity],
   backShiftMax: [1, 10000],
@@ -79,6 +120,7 @@ export type NumericParameter = keyof typeof PARAMETER_LIMITS;
 
 export function setParameter(parameters: Parameters, key: NumericParameter, value: number): boolean {
   if (!Number.isFinite(value) || !Number.isFinite(Math.fround(value))) return false;
+  if (['matterMu','accretionRate','diskOuterRadius'].includes(key) && Math.fround(value) <= 0) return false;
   if ((key === 'massSolar' || key === 'quality') && Math.fround(value) <= 0) return false;
   if (key === 'massSolar' && radiusLightYears(value) <= 0) return false;
   if (key === 'fovDegrees' && (Math.fround(value) <= 0 || Math.fround(value) >= 180)) return false;
@@ -92,4 +134,17 @@ export function setParameter(parameters: Parameters, key: NumericParameter, valu
   if (key === 'renderWidth' || key === 'renderHeight') value = Math.round(value);
   parameters[key] = Math.min(max, Math.max(min, value));
   return true;
+}
+
+// A usable model configuration for exploration; native startup values remain
+// available in DEFAULT_PARAMETERS. This preset changes only radiation controls.
+export function applyEmissionPreset(parameters: Parameters): void {
+  Object.assign(parameters, {
+    diskEnabled: true, jetEnabled: true, diskInnerRadius: 3, diskOuterRadius: 25,
+    diskThickness: 0.75, diskHopper: 0.4, matterMu: 1, accretionRate: 0.1,
+    diskBrightness: 1, diskOpacity: 0.5, reddening: 0.3, diskSaturation: 0.5,
+    blackbodyIntensityExponent: 1, redshiftColorExponent: 1, redshiftIntensityExponent: 4,
+    photonRingBoost: 0, photonRingTemperatureBoost: 0, boostRotation: 0,
+    jetRedshiftIntensityExponent: 4, jetBrightness: 1, jetSaturation: 0, jetShiftMax: 3,
+  });
 }

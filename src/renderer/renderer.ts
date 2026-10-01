@@ -15,6 +15,7 @@ import geometryShader from '../shaders/geometry.wgsl?raw';
 import coordinatesShader from '../shaders/coordinates.wgsl?raw';
 import diagnosticsShader from '../shaders/diagnostics.wgsl?raw';
 import gridShader from '../shaders/grid.wgsl?raw';
+import emissionShader from '../shaders/emission.wgsl?raw';
 import geodesicShader from '../shaders/geodesic.wgsl?raw';
 import { Background } from './background.ts';
 import { Camera, type CameraMode, type Vec3 } from '../camera/camera.ts';
@@ -122,7 +123,7 @@ export class Renderer {
       this.callbacks.onLoading('星空已上传，正在编译透镜管线…');
 
       this.scene = await ScenePasses.create(device,this.uniforms.layout,this.background.layout,
-        [commonShader,geometryShader,coordinatesShader,diagnosticsShader,gridShader, geodesicShader,spectrumShader,hdrShader,fullscreenShader,prepassShader].join('\n'));
+        [commonShader,geometryShader,coordinatesShader,diagnosticsShader,gridShader,emissionShader,geodesicShader,spectrumShader,hdrShader,fullscreenShader,prepassShader].join('\n'));
       if (this.disposed) { this.scene.dispose(); return; }
 
       const post = await PostProcessing.create(device, format, postShader);
@@ -267,7 +268,8 @@ export class Renderer {
     const encoder = device.createCommandEncoder({ label: 'Fullscreen frame' });
     this.scene!.encode(encoder,this.post!.scene.createView(),this.uniforms!.bindGroup,this.prepassUniforms!.bindGroup,
       this.background!.bindGroup(this.parameters.background),this.usePrepass,(this.parameters.debugView === 3 || this.parameters.debugView === 4),this.parameters.spatialGrid,
-      this.parameters.nativeDebug !== 0 || this.parameters.debugView === 4);
+      this.parameters.nativeDebug !== 0 || this.parameters.debugView === 4,
+      this.parameters.diskEnabled || this.parameters.jetEnabled);
     this.post!.encode(encoder, this.context!.getCurrentTexture().createView(), this.parameters, this.temporalFrame.weight, this.postActive);
     device.queue.submit([encoder.finish()]);
   }

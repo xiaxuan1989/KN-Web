@@ -4,7 +4,7 @@ import { radiusLightYears } from './temporal.ts';
 import type { Parameters } from '../physics/parameters.ts';
 
 // Byte sizes and float-word offsets are documented in docs/uniform-layout.md.
-export const UNIFORM_SIZES = [32, 48, 144] as const;
+export const UNIFORM_SIZES = [32, 48, 144, 96] as const;
 
 export interface FrameData {
   width: number;
@@ -29,6 +29,7 @@ export class UniformData {
   readonly game = new Float32Array(8);
   readonly gameIntegers = new Uint32Array(this.game.buffer);
   readonly blackHole = new Float32Array(12);
+  readonly emission = new Float32Array(24);
   readonly camera = new Float32Array(36);
 
   update(frame: FrameData, parameters: Parameters, camera: CameraBasis): void {
@@ -38,6 +39,14 @@ export class UniformData {
     this.blackHole.set([parameters.massSolar, parameters.spin, parameters.charge, parameters.observerMode,
       Number(parameters.frequencyShift), parameters.backShiftMax, parameters.backgroundBrightness, Number(!parameters.prepass), parameters.spatialGrid,
       frame.tetrad?.position[3] ?? (frame.simulationTime ?? frame.time)*299792458/radiusLightYears(parameters.massSolar)/9460730472580800, parameters.debugView === 4 ? 3 : parameters.nativeDebug, 0]);
+    this.emission.set([
+      parameters.diskInnerRadius, parameters.diskOuterRadius, parameters.diskThickness, parameters.diskHopper,
+      parameters.matterMu, parameters.accretionRate, parameters.diskBrightness, parameters.diskOpacity,
+      parameters.reddening, parameters.diskSaturation, parameters.blackbodyIntensityExponent, parameters.redshiftColorExponent,
+      parameters.redshiftIntensityExponent, parameters.photonRingBoost, parameters.photonRingTemperatureBoost, parameters.boostRotation,
+      parameters.jetRedshiftIntensityExponent, parameters.jetBrightness, parameters.jetSaturation, parameters.jetShiftMax,
+      Number(parameters.diskEnabled), Number(parameters.jetEnabled), 0, 0,
+    ]);
     this.camera.fill(0);
     this.camera.set([...camera.position, 0, ...camera.forward, 0, ...camera.right, frame.jitter?.[0] ?? 0, ...camera.up, frame.jitter?.[1] ?? 0]);
     this.camera.set([...(parameters.manualVelocity ? [parameters.velocityX,parameters.velocityY,parameters.velocityZ] : frame.cameraVelocity ?? [0,0,0]),0],16);
@@ -51,7 +60,7 @@ export class UniformData {
 
   // Semantic values read by the verification shader, including u32 -> f32.
   expectedReadback(): Float32Array {
-    const expected = new Float32Array([...this.game, ...this.blackHole, ...this.camera]);
+    const expected = new Float32Array([...this.game, ...this.blackHole, ...this.camera, ...this.emission]);
     expected[6] = this.gameIntegers[6];
     return expected;
   }

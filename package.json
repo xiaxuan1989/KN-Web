@@ -25,7 +25,9 @@
     "test:observer-temporal": "node tools/prepare-observer-temporal-check.mjs && python3 tools/check-observer-temporal.py",
     "test:observer-controls": "python3 tools/check-observer-controls.py && node tools/verify-observer-controls.mjs",
     "test:grid": "python3 tools/prepare-grid-check.py && cargo run --locked --manifest-path tools/physics-check/Cargo.toml --bin grid-check && python3 tools/summarize-grid-check.py",
-    "test:diagnostics": "python3 tools/prepare-diagnostics-check.py && cargo run --locked --manifest-path tools/physics-check/Cargo.toml --bin diagnostics-check && python3 tools/prepare-diagnostic-control-check.py && cargo run --locked --manifest-path tools/physics-check/Cargo.toml --bin diagnostic-control-check"
+    "test:diagnostics": "python3 tools/prepare-diagnostics-check.py && cargo run --locked --manifest-path tools/physics-check/Cargo.toml --bin diagnostics-check && python3 tools/prepare-diagnostic-control-check.py && cargo run --locked --manifest-path tools/physics-check/Cargo.toml --bin diagnostic-control-check",
+    "test:emission": "python3 tools/prepare-emission-check.py && cargo run --locked --manifest-path tools/physics-check/Cargo.toml --bin emission-check && python3 tools/prepare-emission-trace-check.py && cargo run --locked --manifest-path tools/physics-check/Cargo.toml --bin emission-trace-check",
+    "test:emission-render": "python3 tools/prepare-physics-check.py && node tools/prepare-render-check.mjs && python3 tools/prepare-sky-check.py && node tools/prepare-prepass-check.mjs && python3 tools/prepare-prepass-sampling.py && cargo run --locked --manifest-path tools/physics-check/Cargo.toml --bin prepass-check && python3 tools/summarize-prepass-check.py && python3 tools/summarize-prepass-sampling.py && cargo run --locked --manifest-path tools/physics-check/Cargo.toml --bin uniform-check"
   },
   "devDependencies": {
     "@webgpu/types": "0.1.74",
