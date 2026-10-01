@@ -3,6 +3,10 @@ import { radiusLightYears } from '../renderer/temporal.ts';
 export type DebugView = 0 | 1 | 2 | 3 | 4 | 5;
 
 export interface Parameters {
+  maximalExtension: boolean;
+  specializeExtension: boolean;
+  universeSign: 1 | -1;
+  universeIndex: 0 | 1 | 2;
   denseStarEnabled: boolean;
   denseStarRadius: number;
   denseStarBlackbodyIntensityExponent: number;
@@ -69,6 +73,7 @@ export interface Parameters {
 export const DEFAULT_PARAMETERS: Readonly<Parameters> = Object.freeze({
   // Native Application.cpp startup configuration: inner > outer and rate below
   // the jet visibility threshold. Preserve these values and the existing sky.
+  maximalExtension: false, specializeExtension: true, universeSign: 1, universeIndex: 0,
   denseStarEnabled: false, denseStarRadius: 0,
   denseStarBlackbodyIntensityExponent: 4, denseStarRedshiftColorExponent: 1,
   denseStarRedshiftIntensityExponent: 4, denseStarBrightness: 1,
@@ -119,7 +124,7 @@ export const PARAMETER_LIMITS = {
   exposure: [-8, 8],
   gamma: [1, 3],
   bloomStrength: [0, 0.5],
-  massSolar: [0, Infinity],
+  massSolar: [-Infinity, Infinity],
   spin: [-Infinity, Infinity],
   charge: [-Infinity, Infinity],
   fovDegrees: [0, 180],
@@ -133,13 +138,13 @@ export type NumericParameter = keyof typeof PARAMETER_LIMITS;
 export function setParameter(parameters: Parameters, key: NumericParameter, value: number): boolean {
   if (!Number.isFinite(value) || !Number.isFinite(Math.fround(value))) return false;
   if (['matterMu','accretionRate','diskOuterRadius'].includes(key) && Math.fround(value) <= 0) return false;
-  if ((key === 'massSolar' || key === 'quality') && Math.fround(value) <= 0) return false;
+  if ((key === 'massSolar' && Math.fround(value) === 0) || (key === 'quality' && Math.fround(value) <= 0)) return false;
   if (key === 'massSolar' && radiusLightYears(value) <= 0) return false;
   if (key === 'fovDegrees' && (Math.fround(value) <= 0 || Math.fround(value) >= 180)) return false;
   // Native Count/budget use signed int. Reject overflow rather than wrap the loop.
   if (key === 'quality') {
     const f = Math.fround, quality = f(value);
-    const budget = f(f(450*quality)*f(1+f(f(0.3)*quality)));
+    const budget = f(f(1145*quality)*f(1+f(f(0.3)*quality)));
     if (budget >= 2147483647) return false;
   }
   const [min, max] = PARAMETER_LIMITS[key];

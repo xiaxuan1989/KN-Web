@@ -29,22 +29,25 @@ export class ScenePasses {
       { entry: 'fs_prepass', layouts: [uniforms], formats: ['rgba32float','rgba16float'] },
       { entry: 'fs_composite', layouts: [uniforms,background,scene.prepassLayout], formats: ['rgba16float'] },
     ];
-    // Cache grid × diagnostics × radiation variants once. Both passes switch together;
-    // disabled radiation and diagnostics are removed from the ray loop at compile time.
+    // Cache the dynamic path plus an extension-off variant for ordinary rendering.
+    // Diagnostics retain the reference shader: compiler rounding affects error colors.
+    // Every pass switches together, without compiling during interaction.
     const variants = GRID_MODES.flatMap(mode => [false,true].flatMap(diagnostics =>
-      [false,true].flatMap(radiation => configs.map(config => ({ mode, diagnostics, radiation, ...config })))));
+      [false,true].flatMap(radiation => (diagnostics ? [true] : [false,true]).flatMap(extension =>
+        configs.map(config => ({ mode, diagnostics, radiation, extension, ...config }))))));
     const results = await Promise.allSettled(variants.map(async config => device.createRenderPipelineAsync({
-      label: `${config.entry} / grid ${config.mode} / diagnostics ${config.diagnostics} / radiation ${config.radiation}`, layout: device.createPipelineLayout({ bindGroupLayouts: config.layouts }),
+      label: `${config.entry} / grid ${config.mode} / diagnostics ${config.diagnostics} / radiation ${config.radiation} / extension ${config.extension}`, layout: device.createPipelineLayout({ bindGroupLayouts: config.layouts }),
       vertex: { module, entryPoint: 'vs_main' },
       fragment: { module, entryPoint: config.entry, constants: {
         SPATIAL_GRID_MODE: config.mode, DIAGNOSTICS_ENABLED: Number(config.diagnostics), RADIATION_ENABLED: Number(config.radiation),
+        MAXIMAL_EXTENSION_MODE: Number(config.extension),
       },
         targets: config.formats.map(format => ({ format: format as GPUTextureFormat })) },
     })));
     for (const result of results) if (result.status === 'rejected') throw result.reason;
     for (let index = 0; index < variants.length; index += configs.length) {
-      const { mode, diagnostics, radiation } = variants[index];
-      scene.pipelines.set(`${mode},${diagnostics},${radiation}`,
+      const { mode, diagnostics, radiation, extension } = variants[index];
+      scene.pipelines.set(`${mode},${diagnostics},${radiation},${extension}`,
         results.slice(index,index+configs.length).map(result => (result as PromiseFulfilledResult<GPURenderPipeline>).value));
     }
     return scene;
@@ -61,8 +64,10 @@ export class ScenePasses {
     this.group = this.device.createBindGroup({ layout: this.prepassLayout, entries: this.textures.map((texture,binding) => ({ binding, resource: texture.createView() })) });
   }
 
-  encode(encoder: GPUCommandEncoder, target: GPUTextureView, full: GPUBindGroup, half: GPUBindGroup, background: GPUBindGroup, usePrepass: boolean, lensView = false, gridMode: GridMode = 0, diagnostics = false, radiation = false): void {
-    const pipelines = this.pipelines.get(`${gridMode},${diagnostics},${radiation}`)!;
+  encode(encoder: GPUCommandEncoder, target: GPUTextureView, full: GPUBindGroup, half: GPUBindGroup, background: GPUBindGroup, usePrepass: boolean, lensView = false, gridMode: GridMode = 0, diagnostics = false, radiation = false, extension = false, specializeExtension = true): void {
+    // The dynamic variant also provides a like-for-like comparison while off.
+    const dynamicExtension = extension || diagnostics || !specializeExtension;
+    const pipelines = this.pipelines.get(`${gridMode},${diagnostics},${radiation},${dynamicExtension}`)!;
     if (usePrepass) {
       const pass = encoder.beginRenderPass({ label: 'Half resolution KN prepass', colorAttachments: this.textures.map(texture => ({
         view: texture.createView(), clearValue: { r: 0,g: 0,b: 0,a: 0 }, loadOp: 'clear', storeOp: 'store',

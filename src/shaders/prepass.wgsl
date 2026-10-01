@@ -23,21 +23,28 @@ fn TraceScreen(uv: vec2<f32>) -> TraceResult {
     if (DIAGNOSTICS_ENABLED) { debug = select(i32(blackHole.nativeDebug),3,game.debugView == 4u); }
     let settings = RadiationSettings(emission.geometry,emission.material,emission.color,emission.effects,emission.jet,emission.control);
     let star = DenseStarSettings(emission.starSurface,emission.starControl);
-    let ray = TraceSceneRay(camera.position.xyz,direction,blackHole.spin,blackHole.charge,game.quality,i32(blackHole.observerMode),camera.velocity.xyz,frame,SPATIAL_GRID_MODE,blackHole.blackHoleTime,debug,settings,blackHole.massSolar,uv,game.time,star);
-    return PackDiagnostic(ray,debug,TraceMaxStep(blackHole.spin,blackHole.charge),blackHole.backShiftMax);
+    var ray: TraceResult;
+    if (MaximalExtensionEnabled()) {
+        ray = TraceExtendedSceneRay(camera.position.xyz,direction,blackHole.spin,blackHole.charge,game.quality,i32(blackHole.observerMode),camera.velocity.xyz,frame,SPATIAL_GRID_MODE,blackHole.blackHoleTime,debug,settings,blackHole.massSolar,uv,game.time,star,blackHole.extension).ray;
+    } else {
+        ray = TraceSceneRay(camera.position.xyz,direction,blackHole.spin,blackHole.charge,game.quality,i32(blackHole.observerMode),camera.velocity.xyz,frame,SPATIAL_GRID_MODE,blackHole.blackHoleTime,debug,settings,blackHole.massSolar,uv,game.time,star);
+    }
+    return PackDiagnostic(ray,debug,select(TraceMaxStep(blackHole.spin,blackHole.charge),TraceExtendedMaxStep(blackHole.spin,blackHole.charge),MaximalExtensionEnabled()),blackHole.backShiftMax);
 }
 fn EncodeTrace(ray: TraceResult) -> PrepassOutput {
-    if (ray.status == TRACE_ESCAPED) {
+    let debug = select(i32(blackHole.nativeDebug),3,game.debugView == 4u);
+    let energyFlag = select(0.0,0.2,ray.energy < 0.0 && (!MaximalExtensionEnabled() || (debug != 3 && !(debug == 4 && ray.status == TRACE_OPAQUE))));
+    if (IsSkyStatus(ray.status)) {
         let shift = BackgroundFrequencyShift(ray.energy,blackHole.backShiftMax);
-        return PrepassOutput(vec4<f32>(ray.direction*shift,select(1.0,1.2,ray.energy < 0.0)),ray.accumulated);
+        return PrepassOutput(vec4<f32>(ray.direction*shift,f32(ray.status)+energyFlag),ray.accumulated);
     }
     if (ray.status == TRACE_OPAQUE) {
         // Native DEBUG=4 retains its sky direction / shift before becoming opaque.
         let shift = BackgroundFrequencyShift(ray.energy,blackHole.backShiftMax);
-        return PrepassOutput(vec4<f32>(ray.direction*shift,3),ray.accumulated);
+        return PrepassOutput(vec4<f32>(ray.direction*shift,3.0+select(0.0,energyFlag,MaximalExtensionEnabled())),ray.accumulated);
     }
     if (ray.status == TRACE_INVALID) { return PrepassOutput(vec4<f32>(0,0,0,-2),vec4<f32>(0)); }
-    return PrepassOutput(vec4<f32>(0),ray.accumulated);
+    return PrepassOutput(vec4<f32>(0,0,0,select(0.0,energyFlag,MaximalExtensionEnabled())),ray.accumulated);
 }
 @fragment
 fn fs_prepass(input: VertexOutput) -> PrepassOutput {
@@ -102,7 +109,7 @@ fn fs_composite(input: VertexOutput) -> @location(0) vec4<f32> {
     if (blackHole.fullTrace > 0.5 || NeedsRetrace(textureUv)) {
         let ray = TraceScreen(vec2<f32>(textureUv.x,1.0-textureUv.y));
         data = EncodeTrace(ray);
-        if (ray.status == TRACE_ESCAPED || any(ray.direction != vec3<f32>(0))) {
+        if (IsSkyStatus(ray.status) || any(ray.direction != vec3<f32>(0))) {
             direction = ray.direction;
             shift = BackgroundFrequencyShift(ray.energy,blackHole.backShiftMax);
         }
@@ -115,7 +122,7 @@ fn fs_composite(input: VertexOutput) -> @location(0) vec4<f32> {
     let isSky = (status > 0.5 && status < 2.5) || status > 3.5;
     let sampleDirection = select(ScreenDirection(input.uv),direction,isSky && shift > 1e-9);
     // Derivatives are evaluated after divergent retracing reconverges.
-    var sky = textureSample(background,backgroundSampler,sampleDirection);
+    var sky = SampleSceneBackground(sampleDirection,status);
     // The override is uniform: diagnostic derivatives still run after tracing
     // reconverges, and the entire block disappears from ordinary rendering.
     if (DIAGNOSTICS_ENABLED) {

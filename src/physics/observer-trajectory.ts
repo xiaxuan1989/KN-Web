@@ -8,7 +8,7 @@ const zeros = (): Matrix => Array.from({ length: 4 }, () => [0,0,0,0]);
 const dot = (a: readonly number[], b: readonly number[]): number => a.reduce((sum,v,i) => sum+v*b[i],0);
 const changeIndex = (v: readonly number[], g: Matrix): number[] => g.map(row => dot(row,v));
 const cross = (a: readonly number[], b: readonly number[]): number[] => [a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
-export interface TetradFrame { position: number[]; U: number[]; e1: number[]; e2: number[]; e3: number[]; outgoing: boolean }
+export interface TetradFrame { position: number[]; U: number[]; e1: number[]; e2: number[]; e3: number[]; outgoing: boolean; sign?: number }
 export type BoostDirection = 'look' | 'velocity';
 
 // Original accel_cam=(D-A,R-F,S-W), rotated by inverse camera orientation.
@@ -32,7 +32,7 @@ export function observerMetric(X: readonly number[], a: number, Q: number, fade=
   const [x,y,z]=X,a2=a*a,u=x*x+y*y+z*z-a2,S=Math.sqrt(u*u+4*a2*y*y);
   const r2=u>=0 ? .5*(u+S) : 2*a2*y*y/Math.max(1e-20,S-u);
   const r=sign*Math.sqrt(Math.max(r2,0));
-  const f=Math.abs(r)>1e-6 ? (r*r*r-Q*Q*r*r)/Math.max(1e-20,r**4+a2*y*y)*fade : 0;
+  const f=Math.abs(r)>1e-6 ? (r*r*r-Q*Q*r*r)/Math.max(1e-20,r*r*r*r+a2*y*y)*fade : 0;
   const dir=outgoing?-1:1,inv=1/Math.max(1e-20,r2+a2);
   const lower=[(dir*r*x-a*z)*inv,dir*y/r,(dir*r*z+a*x)*inv,1],upper=[...lower.slice(0,3),-1];
   const down=zeros(),up=zeros();
@@ -104,12 +104,15 @@ export class ObserverTrajectory {
   acceleration: Vec3=[0,0,0];
   charge=0;
   stopped=false;
+  extensionEnabled=false;
 
-  initialize(position: Vec3,velocity: Vec3,a: number,Q: number): void {
-    this.outgoing=false;this.sign=1;this.properTime=0;this.stopped=false;
+  initialize(position: Vec3,velocity: Vec3,a: number,Q: number,sign: 1 | -1=1): void {
+    this.outgoing=false;this.sign=sign;this.properTime=0;this.stopped=false;
     const pos=position.map(Math.fround),vel=velocity.map(Math.fround);
-    const Y=this.state=[...pos,0,...Array(16).fill(0)],g=observerMetric(Y,a,Q).down;
-    const product=(a: number[],b: number[])=>dot(a,changeIndex(b,g));
+    const Y=this.state=[...pos,0,...Array(16).fill(0)],g=observerMetric(Y,a,Q,1,this.sign).down;
+    const product=(a: number[],b: number[])=>{
+      let sum=0;for(let i=0;i<4;i++)for(let j=0;j<4;j++)sum+=g[i][j]*a[i]*b[j];return sum;
+    };
     let v=[...vel,1],square=product(v,v);
     if(square>=-1e-6) {
       v=g[3][3]<-1e-6?[0,0,0,1]:[-pos[0]*.1,-pos[1]*.1,-pos[2]*.1,1];square=product(v,v);
@@ -140,7 +143,9 @@ export class ObserverTrajectory {
 
   orthonormalize(a:number,Q:number): void {
     const Y=this.state,g=observerMetric(Y,a,Q,1,this.sign,this.outgoing).down;
-    const product=(o1:number,o2:number)=>dot(Y.slice(o1,o1+4),changeIndex(Y.slice(o2,o2+4),g));
+    const product=(o1:number,o2:number)=>{
+      let sum=0;for(let i=0;i<4;i++)for(let j=0;j<4;j++)sum+=g[i][j]*Y[o1+i]*Y[o2+j];return sum;
+    };
     const factor=1/Math.sqrt(Math.max(1e-12,Math.abs(product(4,4))));for(let i=0;i<4;i++)Y[4+i]*=factor;
     const norm=product(4,4);
     for(let k=0;k<3;k++) {
@@ -227,8 +232,9 @@ export class ObserverTrajectory {
       const step=Math.min(remaining,Math.max(.0005,Math.min(5,gravity,kinematic)));
       const old=this.state.slice(),oldChart=this.outgoing,oldSign=this.sign;
       this.step(step*dir,a,Q);
-      // Maximal extension is not enabled in this Web scene. Stop at its boundary.
-      if(this.sign<0 || !this.state.every(Number.isFinite) || Math.abs(observerMetric(this.state,a,Q,1,this.sign,this.outgoing).r)<1e-6) {
+      // Retain the positive-sheet rollback with extension disabled; allow the
+      // native signed RK stages and final sheet crossing when enabled.
+      if((!this.extensionEnabled && this.sign<0) || !this.state.every(Number.isFinite) || Math.abs(observerMetric(this.state,a,Q,1,this.sign,this.outgoing).r)<1e-6) {
         this.state=old;this.outgoing=oldChart;this.sign=oldSign;this.stopped=true;break;
       }
       this.properTime+=step*dir;remaining-=step;
@@ -237,6 +243,6 @@ export class ObserverTrajectory {
 
   frame(basis:CameraBasis): TetradFrame {
     const rotated=(axis:number[])=>[0,1,2,3].map(i=>-axis.reduce((sum,v,j)=>sum+v*this.state[8+4*j+i],0));
-    return {position:this.state.slice(0,4),U:this.state.slice(4,8),e1:rotated(basis.right),e2:rotated(basis.up),e3:rotated(basis.forward.map(v=>-v)),outgoing:this.outgoing};
+    return {position:this.state.slice(0,4),U:this.state.slice(4,8),e1:rotated(basis.right),e2:rotated(basis.up),e3:rotated(basis.forward.map(v=>-v)),outgoing:this.outgoing,sign:this.sign};
   }
 }

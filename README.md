@@ -2,7 +2,7 @@
 
 Kerr–Newman 黑洞 WebGPU 渲染与在线科普演示
 
-物理实现遵照 baopinshui `BlackHole_common.glsl`。后处理已接通：星空 → 半分辨率 KN 预计算 → 全分辨率合成 / 边缘重追踪 → HDR / TAA / Bloom / 显示映射。支持星空 / 方向网格切换及 Schwarzschild、Kerr、KN 预设。吸积盘、喷流与致密星表面已按原模型接入；最大延拓仍待实现。
+物理实现遵照 baopinshui `BlackHole_common.glsl`。后处理已接通：星空 → 半分辨率 KN 预计算 → 全分辨率合成 / 边缘重追踪 → HDR / TAA / Bloom / 显示映射。支持星空 / 方向网格切换及 Schwarzschild、Kerr、KN 预设。吸积盘、喷流与致密星表面已按原模型接入；最大延拓、负 r 片、白洞与六组原多宇宙背景已接入，默认关闭。
 
 ## 启动
 
@@ -24,7 +24,7 @@ npm run dev
 支持条件及实测边界见 [浏览器兼容说明](docs/browser-compatibility.md)。
 
 ```sh
-npm test             # 98 项 CPU 测试：相机、输入、uniform、渲染循环、FPS 与资源清理
+npm test             # 106 项 CPU 测试：相机、输入、uniform、渲染循环、FPS 与资源清理
 npm run build        # TypeScript 检查 + Vite 静态构建
 npm run preview      # http://127.0.0.1:4173/
 npm run test:physics # GLSL / WGSL 实际 GPU 对照 + 网格离屏绘制
@@ -42,12 +42,15 @@ npm run test:diagnostics # 480 组原诊断公式 + 810 组退出 / 颜色控制
 npm run test:trace    # 原 GLSL 预算、回转退出、终止打包与 WGSL 控制流对照
 npm run test:prepass  # 含上述回归 + 95 组预计算 / 合成场景及原 GLSL 初始采样对照
 npm run test:emission # 454 组原盘 / 喷流函数 + 472 条完整原 TraceRay GPU 对照
-npm run test:emission-render # 95 组生产管线绘制，含盘 / 喷流与致密星场景
+npm run test:emission-render # 139 组生产管线绘制，含盘 / 喷流与致密星场景
 npm run test:dense-star # 960 组原表面 / 噪声函数 + 盘 / 喷流与完整追踪回归
-npm run test:dense-star-render # 生产全 / 半绘制、原采样与 88-word uniform 回读
+npm run test:extension # 原 signed 完整追踪、四维轨迹及跨帧宿主对照
+npm run test:extension-render # 六组原背景采样、44 组扩展场景及旧绘制回归
+npm run test:extension-specialization # 编译变体与动态分支的 139 场景逐附件对照
+npm run test:dense-star-render # 生产全 / 半绘制、原采样与 92-word uniform 回读
 ```
 
-`test:physics` 是可选开发验证工具，需要 macOS Metal、Rust/Cargo、Python 3、glslangValidator；不属于前端运行依赖。`test:sky` / `test:post` 另需 Python Pillow；TAA 宿主对照另需 clang++ 和 GLM（当前路径 `/opt/homebrew/include`）。原函数快照位于 `reference/`；星空资产位于 `public/cubemaps/universe0/`，校验清单位于 `reference/universe0.json`。
+`test:physics` 是可选开发验证工具，需要 macOS Metal、Rust/Cargo、Python 3、glslangValidator；不属于前端运行依赖。`test:sky` / `test:post` 另需 Python Pillow；TAA 宿主对照另需 clang++ 和 GLM（当前路径 `/opt/homebrew/include`）。原函数快照位于 `reference/`；六组星空资产位于 `public/cubemaps/`，校验清单位于 `reference/extension-cubemaps.json`。
 
 ## 操作
 
@@ -67,7 +70,8 @@ npm run test:dense-star-render # 生产全 / 半绘制、原采样与 88-word un
 - quality 可直接输入 10 或更高，FOV 支持 0° 与 180° 之间的值；自旋 / 电荷支持超极限。频移上限范围 1–10000，观者 q/m 为 −2–2；数值及 Web 边界见 [诊断与参数范围](docs/diagnostics-alignment.md)。
 - 「空间网格」：默认关闭；模式 1 使用局部频移计算黑体颜色，模式 2 使用青 / 绿 / 红固定颜色。网格位于真实空间曲面，沿光线累计遮挡，与「背景 → 方向网格」独立。时间倍率控制网格旋转；四维模式使用轨迹 KS 坐标时。
 - 「吸积盘与喷流」：默认保留原无盘 / 无喷流启动画面；点击「盘 + 喷流示例」可观察，两个开关可独立使用。可调盘内外半径、厚度 / 漏斗、吸积率、物质 μ、亮度 / 不透明度、颜色、频移及光子环参数；喷流沿用原外围壳与 0.8c 运动，随时间倍率演化。绕转相机比较倾角，关闭半分辨率预计算可对照全尺寸追踪。详见 [迁移与验证记录](docs/emission-alignment.md)。
-- 「致密星表面」：勾选启用后将半径设为 2 Rs 可观察；0 无表面，有视界时须大于外视界。可调亮度和温度 / 频移指数，原诊断 5 显示棋盘格。表面与盘 / 喷流沿光线共同合成并遮挡后方；负半径表面需后续最大延拓。详见 [表面迁移记录](docs/dense-star-alignment.md)。
+- 「致密星表面」：勾选启用后将半径设为 2 Rs 可观察；0 无表面，有视界时须大于外视界。可调亮度和温度 / 频移指数，原诊断 5 显示棋盘格。表面与盘 / 喷流沿光线共同合成并遮挡后方；负半径表面可在最大延拓的裸奇点配置中绘制。详见 [表面迁移记录](docs/dense-star-alignment.md)。
+- 「最大延拓与多宇宙」：勾选后启用原 Whitehole 路径；可选片号 ±1 与宇宙编号 0–2，普通相机 / 四维轨迹穿盘和向内跨内视界后自动更新。质量可输入负值，Rs 仍取绝对质量；关闭开关恢复原正 r 模式。详见 [迁移记录](docs/maximal-extension-alignment.md)。
 - 「黑洞预设」：Schwarzschild (0,0)、Kerr (0.95,0)、KN (0.8,0.4)，只修改 a* / Q*，保留相机。
 - 「颜色频移」默认开启：GLSL 光谱映射、Shift⁴、背景亮度倍率，频移来自光线初始守恒能量；默认上限 1.5、亮度倍率 2。关闭可对照原色；「原背景」使用 shift=1。
 - 「后处理」可独立开关 TAA / Bloom，调整曝光 EV、Gamma、泛光强度。沿用 NPGS 无抖动、时间相关的历史权重，运动超过原阈值时只使用当前帧。可调时间倍率，面板显示当前帧权重；关闭后处理查看原色。
@@ -75,13 +79,13 @@ npm run test:dense-star-render # 生产全 / 半绘制、原采样与 88-word un
 - 「重置相机」恢复原默认轨道角度（Theta=0°、Phi=45°），从 1 光年平滑靠近 0.0003 光年（默认质量下约 64.5 Rs）；「校验 GPU 参数」再次验证 CPU/WGSL uniform 快照。
 - 保留 Phase 0 的 UV、Phase 1 的相机网格和参数颜色视图用于回归检查。
 
-正常模式下，进入视界、预算耗尽或回转过多均按原 Absorbed/Lost 状态停止背景采样，保留已累计的盘、喷流、表面和网格辐射；关闭辐射与网格时显示黑色，星空自身也有暗像素。紫色表示数值异常。现已支持五种观者、视界内及裸奇点的正 r 场景；静态能层 / 非类时速度按原版输出黑色，奇异数值仍为紫色。负 r 片与最大延拓未启用。
+关闭最大延拓时，进入视界、预算耗尽或回转过多均按原 Absorbed/Lost 状态停止背景采样，保留已累计的盘、喷流、表面和网格辐射；关闭辐射与网格时显示黑色，星空自身也有暗像素。紫色表示数值异常。现已支持五种观者、视界内及裸奇点的正 r 场景；静态能层 / 非类时速度按原版输出黑色，奇异数值仍为紫色。最大延拓开启后使用原 signed 路径；奇点邻域的精度限制见 [扩展记录](docs/maximal-extension-alignment.md)。
 
 坐标按 Rs 归一化，几何 `M=0.5`；相机保持原光年世界位置，改变质量会同步换算 Rs 坐标，因而影响视角下的透镜尺度。quality 沿用原步长和预算公式，保留原严格 `Count > budget` 条件，已移除额外的 1024 步上限。默认输出跟随画布窗口尺寸（CSS 像素），不额外乘 Retina DPR，对齐 macOS 禁用 Retina framebuffer 缩放的行为。1280×960 是初始窗口尺寸，并非固定比例；Web 保留此值作为固定尺寸模式的初值。已移除 640 / 2048 px 输出限制；超过设备纹理限制时等比例缩小。尚未完成浏览器帧率基准或自适应优化。
 
 ## 验证现状
 
-- 96 项 CPU 测试、TypeScript 和生产构建通过，覆盖轨道 / 摆头、T 切换、自由平移 / 滚转、惯性衰减、平滑回正，以及滚轮距离倍率 / 平滑、朝向保持、自由移动速度、生命周期清理与画布格式；包含 FPS 统计、GPU 等待和暂停恢复的 8 项回归。
+- 106 项 CPU 测试、TypeScript 和生产构建通过，覆盖轨道 / 摆头、T 切换、自由平移 / 滚转、惯性衰减、平滑回正，以及滚轮距离倍率 / 平滑、朝向保持、自由移动速度、生命周期清理与画布格式；包含 FPS 统计、GPU 等待和暂停恢复的 8 项回归。
 - Apple M3 Pro / Metal：23 组GLSL vs WGSL 数值对照、31 条完整追踪探针、108 个六面朝向 / 颜色 / mip 探针、14 张完整管线离屏图通过。
 - 自旋反转的阴影逐像素镜像；固定 a*=0.8 加电荷后阴影缩小；近临界光线展示绕转行为。
 - 20 组后处理图、154 帧原生 GPU 回放通过；TAA 混合 / 重置、HDR 数值、Bloom、曝光、Gamma 与方向校验见 [Phase 6 报告](docs/phase6-post.md)。
@@ -96,7 +100,8 @@ npm run test:dense-star-render # 生产全 / 半绘制、原采样与 88-word un
 - 实现边界、原生 GPU 渲染与误差记录见 [Phase 3 报告](docs/phase3-background.md) 和 [Phase 2 迁移报告](docs/phase2-port.md)。
 - 吸积盘 / 喷流：454 组原函数、144 条原完整追踪对照通过，最大缩放误差分别 1.93e-7 / 7.08e-5；20 组组合场景进入全 / 半绘制验证，见 [盘 / 喷流记录](docs/emission-alignment.md)。
 - 致密星：960 组原表面 / 噪声函数逐值一致，472 条完整原追踪（含 328 条表面组合）通过；20 组表面绘制及 190 套 88 分量参数回读通过，见 [致密星记录](docs/dense-star-alignment.md)。
-- 半分辨率流程：95 组 GPU 场景通过，1280×960 测试尺寸下约 2%–2.6% 像素重新追踪；奇数尺寸传参和像素中心采样已对齐；1,386,825 条初始光线与原 GLSL 回读逐值一致，手动插值、边缘判据及极小尺寸回归通过，见 [预计算迁移记录](docs/prepass-port.md)。
+- 半分辨率流程：139 组 GPU 场景通过，1280×960 测试尺寸下约 2%–2.6% 像素重新追踪；奇数尺寸传参和像素中心采样已对齐；1,419,850 条初始光线与原 GLSL 回读逐值一致，手动插值、边缘判据及极小尺寸回归通过，见 [预计算迁移记录](docs/prepass-port.md)。
+- 最大延拓：6936 条常规原完整追踪、6030 个四维状态快照、768 个宿主状态及 2112 个原背景采样对照通过；另有 1044 条奇点敏感路径单独记录，其中 2 条最终状态不同。详见 [实现与数值边界](docs/maximal-extension-alignment.md)。
 - **浏览器工具未连接**，ImageBitmap 上传、Canvas 显示、持续帧率、键鼠、resize、热更新与设备恢复仍待浏览器验收。原生 GPU 测试不能替代浏览器宿主测试。
 
 浏览器验收时检查：启动状态与 GPU 参数回读成功；切换三种物理参数组合；拖动和移动引起正常透镜变化；改变 quality 检查临界曲线和积分步数变化；默认窗口 resize 后输出 / 预计算尺寸与投影比例同步更新，固定模式仍保持指定宽高；切后台后停止移动且返回不跳跃；不支持 WebGPU 时有可读错误和重试入口。
@@ -130,3 +135,5 @@ reference/                     原始依据
 [Uniform 布局](docs/uniform-layout.md)
 
 本轮不部署。盘 / 喷流与致密星已完成实现与原生 GPU 验证，致密星浏览器交互仍待验收；最大延拓保留待办；背景颜色频移及亮度倍率已迁移，HDR 接收真实频移；详见 [颜色频移记录](docs/spectrum-port.md)。已接入运动观者的 Doppler / 光行差，吸积盘与喷流的局域发射频移已随原模型接入。TAA 采用时间相关混合和原运动阈值，不含运动重投影。
+
+最大延拓关闭时使用独立编译变体，避免每条光线动态选择两套追踪循环。1512×945 离屏测量与验证范围见 [性能排查记录](docs/extension-performance.md)。

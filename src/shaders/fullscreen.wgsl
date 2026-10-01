@@ -31,7 +31,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     if (game.debugView == 2u) {
         // Diagnostic colors only: no physical interpretation or lensing yet.
         let tint = vec3<f32>(
-            clamp((log2(blackHole.massSolar) / log2(10.0) + 1.0) / 11.0, 0.0, 1.0),
+            clamp((log2(abs(blackHole.massSolar)) / log2(10.0) + 1.0) / 11.0, 0.0, 1.0),
             (blackHole.spin + 1.5) / 3.0,
             (blackHole.charge + 1.5) / 3.0,
         );
@@ -50,8 +50,8 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     // This keeps implicit derivatives in uniform control flow. The sampler clamps
     // LOD to [0,1], matching min(1, textureQueryLod(...).x) in SampleBackground.
     // Captured/invalid rays may have a zero direction; never sample a zero cube vector.
-    let sampleDirection = select(direction, traced.direction, traced.status == TRACE_ESCAPED);
-    let skyColor = textureSample(background, backgroundSampler, sampleDirection);
+    let sampleDirection = select(direction, traced.direction, IsSkyStatus(traced.status));
+    let skyColor = SampleSceneBackground(sampleDirection,select(CurrentBackgroundStatus(),f32(traced.status),game.debugView == 3u || game.debugView == 4u));
     if (game.debugView == 3u || game.debugView == 4u) {
         if (traced.status == TRACE_INVALID) { return vec4<f32>(0.38, 0.05, 0.28, select(1.0,0.0,game.postEnabled > 0.5)); }
         if (game.debugView == 4u) {
@@ -59,7 +59,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
         }
         var accumulated = traced.accumulated;
         let shift = BackgroundFrequencyShift(traced.energy,blackHole.backShiftMax);
-        if (accumulated.a < 0.99 && traced.status == TRACE_ESCAPED) {
+        if (accumulated.a < 0.99 && IsSkyStatus(traced.status) && traced.energy >= 0.0) {
             let transmission = 1.0-accumulated.a;
             accumulated += 0.9999999*MapBackground(skyColor,shift)*vec4<f32>(
                 pow(transmission,1.0),pow(transmission,1.6),pow(transmission,2.5),1);

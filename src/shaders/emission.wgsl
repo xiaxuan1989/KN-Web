@@ -1,5 +1,5 @@
 // NPGS BlackHole_common.glsl:118–208, 355–364, 1496–1857, 2570–2805, 3862–3882.
-// Port the executed DiskColor / JetColor branches (iWhitehole=0, iPolarization=0,
+// Port the executed DiskColor / JetColor branches (iWhitehole=0/1, iPolarization=0,
 // iUseImageDisk=0). Both modules intentionally share a persistent sampling phase.
 override RADIATION_ENABLED: bool = true;
 struct RadiationSettings {
@@ -8,7 +8,7 @@ struct RadiationSettings {
     color: vec4<f32>,    // reddening, saturation, temperature / shift color exponents
     effects: vec4<f32>,  // shift intensity exponent, ring brightness / temperature, boostRot
     jet: vec4<f32>,      // shift intensity exponent, brightness, saturation, shift max
-    control: vec4<f32>,  // disk / jet switches; remaining words reserved
+    control: vec4<f32>,  // disk / jet switches, runtime Whitehole, reserved
 };
 fn FiniteEmissionPosition(p: vec3<f32>) -> bool {
     return all((bitcast<vec3<u32>>(p) & vec3<u32>(0x7f800000u)) != vec3<u32>(0x7f800000u));
@@ -128,7 +128,7 @@ fn IsJetVisible(AccretionRate: f32, JetBright: f32) -> bool {
     return true;
 }
 
-fn DiskColor(BaseColor: vec4<f32>, RayPos: vec4<f32>, LastRayPos: vec4<f32>, iP_cov: vec4<f32>, lastiP_cov: vec4<f32>, iE_obs: f32, InterRadius: f32, OuterRadius: f32, Thin: f32, Hopper: f32, Brightmut: f32, Darkmut: f32, Reddening: f32, Saturation: f32, DiskTemperatureArgument: f32, BlackbodyIntensityExponent: f32, RedShiftColorExponent: f32, RedShiftIntensityExponent: f32, PeakTemperature: f32, ShiftMax: f32, PhysicalSpinA: f32, PhysicalQ: f32, isoutgoing: bool, ThetaInShell: f32, RayMarchPhase: ptr<function, f32>, blackHoleTime: f32, renderTime: f32, settings: RadiationSettings) -> vec4<f32> {
+fn DiskColorExtended(BaseColor: vec4<f32>, RayPos: vec4<f32>, LastRayPos: vec4<f32>, iP_cov: vec4<f32>, lastiP_cov: vec4<f32>, iE_obs: f32, InterRadius: f32, OuterRadius: f32, Thin: f32, Hopper: f32, Brightmut: f32, Darkmut: f32, Reddening: f32, Saturation: f32, DiskTemperatureArgument: f32, BlackbodyIntensityExponent: f32, RedShiftColorExponent: f32, RedShiftIntensityExponent: f32, PeakTemperature: f32, ShiftMax: f32, PhysicalSpinA: f32, PhysicalQ: f32, isoutgoing: bool, ThetaInShell: f32, RayMarchPhase: ptr<function, f32>, blackHoleTime: f32, renderTime: f32, settings: RadiationSettings, whitehole: bool) -> vec4<f32> {
     var CurrentResult: vec4<f32> = BaseColor;
 
     var MaxDiskHalfHeight: f32 = Thin + max(0.0, Hopper * OuterRadius) + 2.0;
@@ -404,7 +404,7 @@ fn DiskColor(BaseColor: vec4<f32>, RayPos: vec4<f32>, LastRayPos: vec4<f32>, iP_
                             var cMax: f32 = max(max(SampleColor.r, SampleColor.g), SampleColor.b);
                             var cMin: f32 = min(min(SampleColor.r, SampleColor.g), SampleColor.b);
                             SampleColor = vec4<f32>(vec3<f32>(cMax + cMin) - SampleColor.rgb, SampleColor.w);
-                            SampleColor = vec4<f32>(0.0);
+                            if (!whitehole) { SampleColor = vec4<f32>(0.0); }
                         }
 
                         var StepColor: vec4<f32> = SampleColor * StepSize;
@@ -652,10 +652,10 @@ blackHoleTime: f32, renderTime: f32, settings: RadiationSettings) -> vec4<f32> {
     var result = base;
     let g = settings.geometry; let m = settings.material; let c = settings.color;
     if (HasDisk(settings)) {
-        result = DiskColor(result,current.X,previous.X,current.P,previous.P,energy,
+        result = DiskColorExtended(result,current.X,previous.X,current.P,previous.P,energy,
         g.x,g.y,g.z,g.w,m.z,m.w,c.x,c.y,thermodynamics.x,c.z,c.w,
         settings.effects.x,thermodynamics.y,1.0,a,Q,outgoing,theta,phase,
-        blackHoleTime,renderTime,settings);
+        blackHoleTime,renderTime,settings,settings.control.z > 0.5);
     }
     if (HasJet(settings)) {
         result = JetColor(result,current.X,previous.X,current.P,previous.P,energy,
@@ -663,4 +663,8 @@ blackHoleTime: f32, renderTime: f32, settings: RadiationSettings) -> vec4<f32> {
         settings.jet.w,a,Q,outgoing,phase,blackHoleTime,renderTime,settings);
     }
     return result;
+}
+
+fn DiskColor(BaseColor: vec4<f32>, RayPos: vec4<f32>, LastRayPos: vec4<f32>, iP_cov: vec4<f32>, lastiP_cov: vec4<f32>, iE_obs: f32, InterRadius: f32, OuterRadius: f32, Thin: f32, Hopper: f32, Brightmut: f32, Darkmut: f32, Reddening: f32, Saturation: f32, DiskTemperatureArgument: f32, BlackbodyIntensityExponent: f32, RedShiftColorExponent: f32, RedShiftIntensityExponent: f32, PeakTemperature: f32, ShiftMax: f32, PhysicalSpinA: f32, PhysicalQ: f32, isoutgoing: bool, ThetaInShell: f32, RayMarchPhase: ptr<function, f32>, blackHoleTime: f32, renderTime: f32, settings: RadiationSettings) -> vec4<f32> {
+    return DiskColorExtended(BaseColor,RayPos,LastRayPos,iP_cov,lastiP_cov,iE_obs,InterRadius,OuterRadius,Thin,Hopper,Brightmut,Darkmut,Reddening,Saturation,DiskTemperatureArgument,BlackbodyIntensityExponent,RedShiftColorExponent,RedShiftIntensityExponent,PeakTemperature,ShiftMax,PhysicalSpinA,PhysicalQ,isoutgoing,ThetaInShell,RayMarchPhase,blackHoleTime,renderTime,settings,false);
 }

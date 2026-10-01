@@ -89,6 +89,7 @@
           <label for="render-width">固定宽度 / px</label><input id="render-width" data-parameter="renderWidth" type="number" step="1" />
           <label for="render-height">固定高度 / px</label><input id="render-height" data-parameter="renderHeight" type="number" step="1" />
           <label for="prepass-enabled">半分辨率预计算</label><input id="prepass-enabled" data-toggle="prepass" type="checkbox" />
+          <label for="specialize-extension" title="关闭可对照优化前结果（稍慢）">关闭延拓时加速</label><input id="specialize-extension" data-toggle="specializeExtension" type="checkbox" />
         </div>
         <details class="post-controls" id="emission-controls">
           <summary>吸积盘与喷流</summary>
@@ -119,6 +120,15 @@
           </div>
           <p class="note">默认保留原启动参数；点击示例启用盘与喷流。盘需内半径小于外半径，并有厚度或漏斗斜率；喷流需吸积率 ≥ 0.01 且亮度大于 0。盘面沿自旋赤道，绕转相机可比较倾角。盘和喷流随时间倍率演化，设为 0 暂停；各频移指数可设为 0 做对照。</p>
         </details>
+        <details class="post-controls" id="extension-controls">
+          <summary>最大延拓与多宇宙</summary>
+          <div class="controls">
+            <label for="maximal-extension">最大延拓 / Whitehole</label><input id="maximal-extension" data-toggle="maximalExtension" type="checkbox" />
+            <label for="universe-sign">观者所在空间片</label><select id="universe-sign" data-extension="universeSign"><option value="1">正 r / Universe</option><option value="-1">负 r / Antiverse</option></select>
+            <label for="universe-index">当前宇宙编号</label><select id="universe-index" data-extension="universeIndex"><option value="0">0</option><option value="1">1</option><option value="2">2</option></select>
+          </div>
+          <p class="note">开启后沿用原 Whitehole 的视界穿越、旋转盘面换片和回转规则，显示三组宇宙及其反宇宙。四维观者跨片与进入内视界时自动更新状态；也可手动选择起始片和宇宙。质量支持负值，Rs 按绝对值计算，原负质量几何与背景规则在最大延拓中生效。关闭后恢复正 r 黑洞模式。</p>
+        </details>
         <details class="post-controls" id="dense-star-controls">
           <summary>致密星表面</summary>
           <div class="controls">
@@ -129,7 +139,7 @@
             <label for="denseStarRedshiftColorExponent">表面频移 → 温度指数</label><input id="denseStarRedshiftColorExponent" data-parameter="denseStarRedshiftColorExponent" type="number" step="0.1" />
             <label for="denseStarRedshiftIntensityExponent">表面频移 → 亮度指数</label><input id="denseStarRedshiftIntensityExponent" data-parameter="denseStarRedshiftIntensityExponent" type="number" step="0.1" />
           </div>
-          <p class="note">勾选后将半径设为 2 Rs 可观察表面；0 表示无表面。有视界时半径须大于外视界，裸奇点允许任意非零半径。当前场景只追踪正 r 区域，负半径表面需后续最大延拓。原模型以 6000 K 叠加噪声温度，自转随时间倍率演化；表面遮挡其后的天空、盘与喷流。原诊断 5 显示表面棋盘格。</p>
+          <p class="note">勾选后将半径设为 2 Rs 可观察表面；0 表示无表面。有视界时半径须大于外视界，裸奇点允许任意非零半径。负半径表面需开启最大延拓，并满足原裸奇点启用规则。原模型以 6000 K 叠加噪声温度，自转随时间倍率演化；表面遮挡其后的天空、盘与喷流。原诊断 5 显示表面棋盘格。</p>
         </details>
         <details class="post-controls" open>
           <summary>四维观者控制</summary>

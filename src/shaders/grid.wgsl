@@ -55,7 +55,7 @@ fn IntersectKerrEllipsoid(O: vec3<f32>, D: vec3<f32>, r: f32, a: f32) -> vec2<f3
     return vec2<f32>(t1, t2);
 }
 
-fn GridColorSimple(BaseColor: vec4<f32>, RayPos: vec4<f32>, LastRayPos: vec4<f32>, P_cov: vec4<f32>, LastP_cov: vec4<f32>, PhysicalSpinA: f32, PhysicalQ: f32, isoutgoing: bool, EndStepSign: f32, dlambda: f32, showInnerGrid: bool, gridTime: f32) -> vec4<f32> {
+fn GridColorSimpleExtended(BaseColor: vec4<f32>, RayPos: vec4<f32>, LastRayPos: vec4<f32>, P_cov: vec4<f32>, LastP_cov: vec4<f32>, PhysicalSpinA: f32, PhysicalQ: f32, isoutgoing: bool, EndStepSign: f32, dlambda: f32, showInnerGrid: bool, gridTime: f32, whitehole: bool) -> vec4<f32> {
     var CurrentResult: vec4<f32> = BaseColor;
     if (CurrentResult.a > 0.99) { return CurrentResult; }
     var SignedGridRadii: array<f32,5>;
@@ -221,7 +221,7 @@ fn GridColorSimple(BaseColor: vec4<f32>, RayPos: vec4<f32>, LastRayPos: vec4<f32
                         var cMin: f32 = min(min(GridCol.r, GridCol.g), GridCol.b);
                         GridCol = vec4<f32>(vec3<f32>(cMax + cMin) - GridCol.rgb, GridCol.a);
                         // Native Whitehole=0 suppresses emission, but still accumulates alpha.
-                        GridCol = vec4<f32>(0.0);
+                        if (!whitehole) { GridCol = vec4<f32>(0.0); }
                     }
                     var Alpha: f32 = GridIntensity * 0.8;
                     CurrentResult = vec4<f32>(CurrentResult.rgb + GridCol.rgb * Alpha * (1.0 - CurrentResult.a), CurrentResult.a);
@@ -265,7 +265,7 @@ fn GridColorSimple(BaseColor: vec4<f32>, RayPos: vec4<f32>, LastRayPos: vec4<f32
                 var cMax: f32 = max(max(GridCol.r, GridCol.g), GridCol.b);
                 var cMin: f32 = min(min(GridCol.r, GridCol.g), GridCol.b);
                 GridCol = vec4<f32>(vec3<f32>(cMax + cMin) - GridCol.rgb, GridCol.a);
-                GridCol = vec4<f32>(0.0);
+                if (!whitehole) { GridCol = vec4<f32>(0.0); }
             }
             var Alpha: f32 = GridIntensity * 0.8;
             CurrentResult = vec4<f32>(CurrentResult.rgb + GridCol.rgb * Alpha * (1.0 - CurrentResult.a), CurrentResult.a);
@@ -275,7 +275,7 @@ fn GridColorSimple(BaseColor: vec4<f32>, RayPos: vec4<f32>, LastRayPos: vec4<f32
     return CurrentResult;
 }
 
-fn GridColor(BaseColor: vec4<f32>, RayPos: vec4<f32>, LastRayPos: vec4<f32>, iP_cov: vec4<f32>, iE_obs: f32, PhysicalSpinA: f32, PhysicalQ: f32, isoutgoing: bool, EndStepSign: f32, gridTime: f32) -> vec4<f32> {
+fn GridColorExtended(BaseColor: vec4<f32>, RayPos: vec4<f32>, LastRayPos: vec4<f32>, iP_cov: vec4<f32>, iE_obs: f32, PhysicalSpinA: f32, PhysicalQ: f32, isoutgoing: bool, EndStepSign: f32, gridTime: f32, whitehole: bool) -> vec4<f32> {
     var CurrentResult: vec4<f32> = BaseColor;
     if (CurrentResult.a > 0.99) { return CurrentResult; }
     var SignedGridRadii: array<f32,12>;
@@ -424,4 +424,12 @@ fn GridColor(BaseColor: vec4<f32>, RayPos: vec4<f32>, LastRayPos: vec4<f32>, iP_
         }
     }
     return CurrentResult;
+}
+
+fn GridColor(BaseColor: vec4<f32>, RayPos: vec4<f32>, LastRayPos: vec4<f32>, iP_cov: vec4<f32>, iE_obs: f32, PhysicalSpinA: f32, PhysicalQ: f32, isoutgoing: bool, EndStepSign: f32, gridTime: f32) -> vec4<f32> {
+    return GridColorExtended(BaseColor,RayPos,LastRayPos,iP_cov,iE_obs,PhysicalSpinA,PhysicalQ,isoutgoing,EndStepSign,gridTime,false);
+}
+
+fn GridColorSimple(BaseColor: vec4<f32>, RayPos: vec4<f32>, LastRayPos: vec4<f32>, P_cov: vec4<f32>, LastP_cov: vec4<f32>, PhysicalSpinA: f32, PhysicalQ: f32, isoutgoing: bool, EndStepSign: f32, dlambda: f32, showInnerGrid: bool, gridTime: f32) -> vec4<f32> {
+    return GridColorSimpleExtended(BaseColor,RayPos,LastRayPos,P_cov,LastP_cov,PhysicalSpinA,PhysicalQ,isoutgoing,EndStepSign,dlambda,showInnerGrid,gridTime,false);
 }

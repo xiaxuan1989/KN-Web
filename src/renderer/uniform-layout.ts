@@ -4,7 +4,7 @@ import { radiusLightYears } from './temporal.ts';
 import type { Parameters } from '../physics/parameters.ts';
 
 // Byte sizes and float-word offsets are documented in docs/uniform-layout.md.
-export const UNIFORM_SIZES = [32, 48, 144, 128] as const;
+export const UNIFORM_SIZES = [32, 64, 144, 128] as const;
 
 export interface FrameData {
   width: number;
@@ -28,7 +28,7 @@ export function prepassFrame(frame: FrameData): FrameData {
 export class UniformData {
   readonly game = new Float32Array(8);
   readonly gameIntegers = new Uint32Array(this.game.buffer);
-  readonly blackHole = new Float32Array(12);
+  readonly blackHole = new Float32Array(16);
   readonly emission = new Float32Array(32);
   readonly camera = new Float32Array(36);
 
@@ -38,7 +38,9 @@ export class UniformData {
     this.gameIntegers[6] = parameters.debugView;
     this.blackHole.set([parameters.massSolar, parameters.spin, parameters.charge, parameters.observerMode,
       Number(parameters.frequencyShift), parameters.backShiftMax, parameters.backgroundBrightness, Number(!parameters.prepass), parameters.spatialGrid,
-      frame.tetrad?.position[3] ?? (frame.simulationTime ?? frame.time)*299792458/radiusLightYears(parameters.massSolar)/9460730472580800, parameters.debugView === 4 ? 3 : parameters.nativeDebug, 0]);
+      frame.tetrad?.position[3] ?? (frame.simulationTime ?? frame.time)*299792458/radiusLightYears(parameters.massSolar)/9460730472580800, parameters.debugView === 4 ? 3 : parameters.nativeDebug, 0,
+      Number(parameters.maximalExtension), parameters.maximalExtension ? frame.tetrad?.sign ?? parameters.universeSign : 1,
+      parameters.maximalExtension ? parameters.universeIndex : 0, 0]);
     this.emission.set([
       parameters.diskInnerRadius, parameters.diskOuterRadius, parameters.diskThickness, parameters.diskHopper,
       parameters.matterMu, parameters.accretionRate, parameters.diskBrightness, parameters.diskOpacity,

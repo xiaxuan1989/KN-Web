@@ -1,8 +1,7 @@
-// BlackHole_common.glsl Fbm_Standalone / DensestarColor. Positive sheet,
-// native iWhitehole=0; signed radius is preserved for Phase 2 integration.
+// BlackHole_common.glsl Fbm_Standalone / DensestarColor, including signed sheets.
 struct DenseStarSettings {
     surface: vec4<f32>, // signed Rs, blackbody intensity, redshift color, redshift intensity
-    control: vec4<f32>, // brightness, enabled, reserved, reserved
+    control: vec4<f32>, // brightness, enabled, runtime Whitehole, reserved
 };
 fn DenseStarRadius(settings: DenseStarSettings) -> f32 {
     return select(0.0, settings.surface.x, settings.control.y > 0.5);
@@ -89,8 +88,13 @@ fn DenseStarColor(base: vec4<f32>, current: State, previous: State, a: f32, Q: f
         }
         var star = vec4<f32>(settings.control.x*color*intensity,1);
         // NPGS first inverts negative-energy color, then suppresses it when
-        // iWhitehole=0. The latter is the current scene's supported mode.
-        if (emissionEnergy < 0.0) { star = vec4<f32>(0); }
+        // The runtime Whitehole flag retains native negative-energy emission.
+        if (emissionEnergy < 0.0) {
+            let cMax = max(max(star.r,star.g),star.b);
+            let cMin = min(min(star.r,star.g),star.b);
+            star = vec4<f32>(vec3<f32>(cMax+cMin)-star.rgb,star.a);
+            if (settings.control.z < 0.5) { star = vec4<f32>(0); }
+        }
         result = vec4<f32>(result.rgb+star.rgb*star.a*(1.0-result.a),result.a+star.a*(1.0-result.a));
         if (result.a > 0.99) { break; }
     }

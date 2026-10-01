@@ -18,10 +18,13 @@ import gridShader from '../shaders/grid.wgsl?raw';
 import emissionShader from '../shaders/emission.wgsl?raw';
 import denseStarShader from '../shaders/dense-star.wgsl?raw';
 import geodesicShader from '../shaders/geodesic.wgsl?raw';
+import extensionShader from '../shaders/extension.wgsl?raw';
+import backgroundShader from '../shaders/background.wgsl?raw';
 import { Background } from './background.ts';
 import { Camera, type CameraMode, type Vec3 } from '../camera/camera.ts';
 import { CameraInput } from '../camera/input.ts';
 import type { Parameters } from '../physics/parameters.ts';
+import { UniverseState } from '../physics/universe-state.ts';
 import { UniformBuffers } from './buffers.ts';
 import { WEBGPU_REQUIREMENTS } from './webgpu-support.ts';
 import { FrameLoop, CompletedFpsCounter } from './frame-loop.ts';
@@ -75,6 +78,7 @@ export class Renderer {
   private temporalFrame = { weight: 1, jitter: [0, 0] as [number, number] };
   private postActive = false;
   private trajectory?: ObserverTrajectory;
+  private readonly universe = new UniverseState();
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -115,16 +119,16 @@ export class Renderer {
       context.configure({ device, format, alphaMode: 'opaque' });
       this.uniforms = new UniformBuffers(device);
       this.prepassUniforms = new UniformBuffers(device);
-      this.callbacks.onLoading('正在加载星空 · 0 / 6');
+      this.callbacks.onLoading('正在加载星空 · 0 / 36');
       const background = await Background.create(device, this.loading.signal, (count) => {
-        if (!this.disposed) this.callbacks.onLoading(`正在加载星空 · ${count} / 6`);
+        if (!this.disposed) this.callbacks.onLoading(`正在加载星空 · ${count} / 36`);
       });
       if (this.disposed) { background.dispose(); return; }
       this.background = background;
       this.callbacks.onLoading('星空已上传，正在编译透镜管线…');
 
       this.scene = await ScenePasses.create(device,this.uniforms.layout,this.background.layout,
-        [commonShader,geometryShader,coordinatesShader,diagnosticsShader,gridShader,emissionShader,denseStarShader,geodesicShader,spectrumShader,hdrShader,fullscreenShader,prepassShader].join('\n'));
+        [commonShader,geometryShader,coordinatesShader,diagnosticsShader,gridShader,emissionShader,denseStarShader,geodesicShader,extensionShader,backgroundShader,spectrumShader,hdrShader,fullscreenShader,prepassShader].join('\n'));
       if (this.disposed) { this.scene.dispose(); return; }
 
       const post = await PostProcessing.create(device, format, postShader);
@@ -205,6 +209,7 @@ export class Renderer {
     this.camera.reset();
     this.temporal.reset();
     this.trajectory = undefined;
+    this.universe.reset();
     this.callbacks.onCameraMode(this.camera.mode);
   }
 
@@ -260,6 +265,7 @@ export class Renderer {
     if (this.trajectory) this.trajectory.acceleration = observerAcceleration(this.input?.thrustAxes() ?? [0,0,0],this.camera.basis(),this.parameters.observerThrust);
     this.temporalFrame = advanceObserverFrame(this.temporal,this.camera.basis(),this.parameters,
       this.realDeltaTime,this.postActive && this.parameters.taa,this.trajectory);
+    this.universe.update(this.trajectory?.state ?? this.camera.position,this.parameters,this.trajectory?.sign);
     this.updateUniforms();
     // Keep uploads and submission synchronous and ordered on the same queue:
     // frame N reads its uniforms/history before frame N+1 overwrites them.
@@ -270,7 +276,7 @@ export class Renderer {
     this.scene!.encode(encoder,this.post!.scene.createView(),this.uniforms!.bindGroup,this.prepassUniforms!.bindGroup,
       this.background!.bindGroup(this.parameters.background),this.usePrepass,(this.parameters.debugView === 3 || this.parameters.debugView === 4),this.parameters.spatialGrid,
       this.parameters.nativeDebug !== 0 || this.parameters.debugView === 4,
-      this.parameters.diskEnabled || this.parameters.jetEnabled || this.parameters.denseStarEnabled);
+      this.parameters.diskEnabled || this.parameters.jetEnabled || this.parameters.denseStarEnabled,this.parameters.maximalExtension,this.parameters.specializeExtension);
     this.post!.encode(encoder, this.context!.getCurrentTexture().createView(), this.parameters, this.temporalFrame.weight, this.postActive);
     device.queue.submit([encoder.finish()]);
   }
@@ -314,10 +320,23 @@ export class Renderer {
       }
       return;
     }
+    if (this.trajectory) {
+      if (this.trajectory.extensionEnabled !== p.maximalExtension) this.trajectory.stopped = false;
+      if (!p.maximalExtension && this.trajectory.sign < 0) {
+        const position = this.trajectory.state.slice(0,3) as Vec3;
+        this.trajectory.initialize(position,[0,0,0],p.spin*.5,p.charge*.5);
+      } else if (p.maximalExtension && this.trajectory.sign !== p.universeSign) {
+        this.trajectory.sign = p.universeSign;
+        this.trajectory.stopped = false;
+        this.trajectory.orthonormalize(p.spin*.5,p.charge*.5);
+      }
+      this.trajectory.extensionEnabled = p.maximalExtension;
+    }
     if (!this.trajectory) {
       this.trajectory = new ObserverTrajectory();
       const velocity: Vec3 = p.manualVelocity ? [p.velocityX,p.velocityY,p.velocityZ] : this.temporal.cameraVelocity();
-      this.trajectory.initialize(this.camera.position,velocity,p.spin*.5,p.charge*.5);
+      this.trajectory.initialize(this.camera.position,velocity,p.spin*.5,p.charge*.5,p.maximalExtension ? p.universeSign : 1);
+      this.trajectory.extensionEnabled = p.maximalExtension;
       this.camera.enterObserverMode();
       this.callbacks.onCameraMode(this.camera.mode);
     }

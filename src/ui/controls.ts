@@ -43,6 +43,15 @@ export function bindControls(parameters: Parameters, actions: { boost?: (directi
     if (mode === -1 || mode === 0 || mode === 1 || mode === 2 || mode === 3) parameters.observerMode = mode;
     syncObserver();
   }, { signal: controller.signal });
+  for (const key of ['universeSign','universeIndex'] as const) {
+    const input = document.querySelector<HTMLSelectElement>(`[data-extension="${key}"]`)!;
+    input.value = String(parameters[key]);
+    input.addEventListener('change', () => {
+      const value = Number(input.value);
+      if (key === 'universeSign' && (value === -1 || value === 1)) parameters.universeSign = value;
+      if (key === 'universeIndex' && (value === 0 || value === 1 || value === 2)) parameters.universeIndex = value;
+    }, { signal: controller.signal });
+  }
   const controls = (Object.keys(PARAMETER_LIMITS) as NumericParameter[]).map((key) => {
     const input = document.querySelector<HTMLInputElement>(`[data-parameter="${key}"]`)!;
     const [min, max] = PARAMETER_LIMITS[key];
@@ -61,7 +70,7 @@ export function bindControls(parameters: Parameters, actions: { boost?: (directi
     }
   };
   syncSizeControls();
-  for (const key of ['denseStarEnabled', 'diskEnabled', 'jetEnabled', 'manualVelocity', 'fitWindow', 'prepass', 'frequencyShift', 'postProcessing', 'taa', 'bloom'] as const) {
+  for (const key of ['maximalExtension', 'specializeExtension', 'denseStarEnabled', 'diskEnabled', 'jetEnabled', 'manualVelocity', 'fitWindow', 'prepass', 'frequencyShift', 'postProcessing', 'taa', 'bloom'] as const) {
     const input = document.querySelector<HTMLInputElement>(`[data-toggle="${key}"]`)!;
     input.checked = parameters[key];
     input.addEventListener('change', () => {
@@ -107,6 +116,10 @@ export function bindControls(parameters: Parameters, actions: { boost?: (directi
     sync: () => {
       syncPreset();
       syncObserver();
+      for (const key of ['universeSign','universeIndex'] as const) {
+        const input = document.querySelector<HTMLSelectElement>(`[data-extension="${key}"]`)!;
+        if (document.activeElement !== input) input.value = String(parameters[key]);
+      }
       grid.value = String(parameters.spatialGrid);
       diagnostic.value = String(parameters.nativeDebug);
       for (const key of ['observerThrust','boostRapidity'] as const) {

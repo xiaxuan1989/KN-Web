@@ -291,7 +291,7 @@ fn PackDiagnostic(ray: TraceResult, debug: i32, maxStep: f32, maximumShift: f32)
     var result = ray;
     if (ray.status == TRACE_INVALID) { return result; }
     if (debug == 3) { result.accumulated = DebugStepColor(ray.steps,maxStep); result.direction = vec3<f32>(0); result.status = TRACE_OPAQUE; }
-    if (debug == 4 && ray.status == TRACE_ESCAPED) {
+    if (debug == 4 && (ray.status == TRACE_ESCAPED || ray.status == 2u || ray.status == 4u || ray.status == 5u)) {
         let shift = clamp(1.0/max(1e-14,abs(ray.energy)),1.0/maximumShift,maximumShift);
         result.accumulated = DebugShiftColor(shift,maximumShift); result.status = TRACE_OPAQUE;
     }

@@ -21,6 +21,7 @@ struct BlackHoleArgs {
     blackHoleTime: f32,          // c * GameTime / Rs, or transported KS time
     nativeDebug: f32,            // original iDEBUG 0..6
     reserved1: f32,
+    extension: vec4<f32>, // Whitehole enable, native iUniverseSign, iInWhichUniverse, reserved
 };
 
 struct CameraArgs {
@@ -51,3 +52,12 @@ struct EmissionArgs {
     starControl: vec4<f32>,
 };
 @group(0) @binding(3) var<uniform> emission: EmissionArgs;
+
+// Production uses 0 when disabled, 1 when enabled. Keep the enabled path
+// uniform-driven: folding that branch changed a sensitive whitehole case on
+// Metal. -1 is the same dynamic reference path used by validation probes.
+override MAXIMAL_EXTENSION_MODE: i32 = -1;
+fn MaximalExtensionEnabled() -> bool {
+    if (MAXIMAL_EXTENSION_MODE == 0) { return false; }
+    return blackHole.extension.x > 0.5;
+}

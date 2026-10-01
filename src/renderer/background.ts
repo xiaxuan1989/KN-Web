@@ -1,5 +1,5 @@
 import { createCubeFace } from './cubemap-data.ts';
-import { loadCubeFaces } from './cubemap-loader.ts';
+import { loadUniverseFaces, SKYBOX_NAMES } from './cubemap-loader.ts';
 import mipShader from '../shaders/cubemap-mip.wgsl?raw';
 
 export type BackgroundKind = 'sky' | 'grid';
@@ -15,23 +15,31 @@ export class Background {
     this.layout = device.createBindGroupLayout({ entries: [
       { binding: 0, visibility: GPUShaderStage.FRAGMENT, texture: { viewDimension: 'cube' } },
       { binding: 1, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
+      ...[2,3,4,5,6].map(binding => ({ binding, visibility: GPUShaderStage.FRAGMENT, texture: { viewDimension: 'cube' as const } })),
     ] });
   }
 
   static async create(device: GPUDevice, signal: AbortSignal, onProgress: (count: number) => void): Promise<Background> {
-    const faces = await loadCubeFaces(`${import.meta.env.BASE_URL}cubemaps/universe0/`, device.limits.maxTextureDimension2D, signal, onProgress);
-    const background = new Background(device);
+    const faces = await loadUniverseFaces(`${import.meta.env.BASE_URL}cubemaps/`,
+      device.limits.maxTextureDimension2D,signal,onProgress);
+    let background: Background | undefined;
     try {
+      background = new Background(device);
       signal.throwIfAborted();
       device.pushErrorScope('validation');
       try {
         // NPGS uses R8G8B8A8Unorm and flipVertically=false, not an sRGB view.
-        const sky = background.allocate('sky', faces[0].width);
-        faces.forEach((source, face) => device.queue.copyExternalImageToTexture(
-          { source, flipY: false }, { texture: sky, origin: [0, 0, face], premultipliedAlpha: false },
-          [source.width, source.height, 1],
-        ));
+        const skies = SKYBOX_NAMES.map((name,index) => {
+          const sky = background!.allocate(name,faces[index*6].width);
+          faces.slice(index*6,index*6+6).forEach((source,face) => device.queue.copyExternalImageToTexture(
+            { source, flipY: false },{ texture: sky,origin: [0,0,face],premultipliedAlpha: false },
+            [source.width,source.height,1],
+          ));
+          return sky;
+        });
         const grid = background.allocate('grid', 256);
+        background.createGroup('sky',skies);
+        background.createGroup('grid',Array(6).fill(grid));
         for (let face = 0; face < 6; face++) {
           device.queue.writeTexture({ texture: grid, origin: [0, 0, face] }, createCubeFace(face, 256),
             { bytesPerRow: 1024, rowsPerImage: 256 }, [256, 256, 1]);
@@ -44,24 +52,27 @@ export class Background {
       signal.throwIfAborted();
       return background;
     } catch (error) {
-      background.dispose();
+      background?.dispose();
       throw error;
     } finally {
       faces.forEach((face) => face.close());
     }
   }
 
-  private allocate(kind: BackgroundKind, size: number): GPUTexture {
+  private allocate(kind: string, size: number): GPUTexture {
     const texture = this.device.createTexture({ label: `${kind} cubemap`, size: [size, size, 6],
       mipLevelCount: 2, format: 'rgba8unorm',
       usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT });
     this.textures.push(texture);
-    this.groups.set(kind, this.device.createBindGroup({ layout: this.layout, entries: [
-      { binding: 0, resource: texture.createView({ dimension: 'cube' }) },
-      { binding: 1, resource: this.device.createSampler({ minFilter: 'linear', magFilter: 'linear',
-        mipmapFilter: 'linear', lodMinClamp: 0, lodMaxClamp: 1 }) },
-    ] }));
     return texture;
+  }
+
+  private createGroup(kind: BackgroundKind, skies: GPUTexture[]): void {
+    const bindings = [0,2,3,4,5,6];
+    this.groups.set(kind,this.device.createBindGroup({ layout:this.layout,entries: [
+      ...skies.map((texture,index) => ({binding:bindings[index],resource:texture.createView({dimension:'cube'})})),
+      {binding:1,resource:this.device.createSampler({minFilter:'linear',magFilter:'linear',mipmapFilter:'linear',lodMinClamp:0,lodMaxClamp:1})},
+    ] }));
   }
 
   private async generateMips(signal: AbortSignal): Promise<void> {

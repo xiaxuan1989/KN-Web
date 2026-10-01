@@ -1,5 +1,18 @@
 // FTextureCube::LoadImage in NPGS Texture.cpp: Vulkan/WebGPU cube layer order.
 export const CUBE_FILES = ['PosX.jpg', 'NegX.jpg', 'PosY.jpg', 'NegY.jpg', 'PosZ.jpg', 'NegZ.jpg'] as const;
+export const SKYBOX_NAMES = ['universe0','antiverse0','universe1','antiverse1','universe2','antiverse2'] as const;
+
+export async function loadUniverseFaces(baseUrl: string, maxDimension: number, signal: AbortSignal,
+  onProgress: (completed: number) => void = () => {}): Promise<ImageBitmap[]> {
+  let completed = 0;
+  const results = await Promise.allSettled(SKYBOX_NAMES.map(name => loadCubeFaces(
+    `${baseUrl}${name}/`,maxDimension,signal,() => onProgress(++completed),
+  )));
+  const faces = results.flatMap(result => result.status === 'fulfilled' ? result.value : []);
+  const failure = results.find(result => result.status === 'rejected');
+  if (failure?.status === 'rejected') { faces.forEach(face => face.close());throw failure.reason; }
+  return faces;
+}
 
 export async function loadCubeFaces(
   baseUrl: string,
