@@ -37,7 +37,7 @@ export class UniformBuffers {
   async verify(): Promise<number> {
     const device = this.device;
     const outputLayout = device.createBindGroupLayout({ entries: [{
-      binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage', minBindingSize: 320 },
+      binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage', minBindingSize: 352 },
     }] });
     const pipeline = await device.createComputePipelineAsync({
       layout: device.createPipelineLayout({ bindGroupLayouts: [this.layout, outputLayout] }),
@@ -46,8 +46,8 @@ export class UniformBuffers {
         entryPoint: 'verify_uniforms',
       },
     });
-    const output = device.createBuffer({ size: 320, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
-    const readback = device.createBuffer({ size: 320, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+    const output = device.createBuffer({ size: 352, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
+    const readback = device.createBuffer({ size: 352, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
     try {
       // Capture immediately before submission, without await: later frames cannot
       // overwrite this snapshot before the verification dispatch enters the queue.
@@ -60,7 +60,7 @@ export class UniformBuffers {
       pass.setBindGroup(1, device.createBindGroup({ layout: outputLayout, entries: [{ binding: 0, resource: { buffer: output } }] }));
       pass.dispatchWorkgroups(1);
       pass.end();
-      encoder.copyBufferToBuffer(output, 0, readback, 0, 320);
+      encoder.copyBufferToBuffer(output, 0, readback, 0, 352);
       device.queue.submit([encoder.finish()]);
       await readback.mapAsync(GPUMapMode.READ);
       const actual = new Float32Array(readback.getMappedRange());

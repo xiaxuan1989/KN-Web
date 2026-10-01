@@ -46,7 +46,7 @@
             <option value="2">2 · 初始动量</option>
             <option value="3">3 · 步数 / MaxStep</option>
             <option value="4">4 · 天空频移</option>
-            <option value="5">5 · 致密星表面（本场景无效果）</option>
+            <option value="5">5 · 致密星表面棋盘格</option>
             <option value="6">6 · 半屏放大率</option>
           </select>
           <label for="background">背景</label>
@@ -118,6 +118,18 @@
             <label for="jetShiftMax">喷流亮度频移上限</label><input id="jetShiftMax" data-parameter="jetShiftMax" type="number" step="0.1" />
           </div>
           <p class="note">默认保留原启动参数；点击示例启用盘与喷流。盘需内半径小于外半径，并有厚度或漏斗斜率；喷流需吸积率 ≥ 0.01 且亮度大于 0。盘面沿自旋赤道，绕转相机可比较倾角。盘和喷流随时间倍率演化，设为 0 暂停；各频移指数可设为 0 做对照。</p>
+        </details>
+        <details class="post-controls" id="dense-star-controls">
+          <summary>致密星表面</summary>
+          <div class="controls">
+            <label for="dense-star-enabled">启用致密星</label><input id="dense-star-enabled" data-toggle="denseStarEnabled" type="checkbox" />
+            <label for="denseStarRadius">表面半径 / Rs</label><input id="denseStarRadius" data-parameter="denseStarRadius" type="number" step="0.1" />
+            <label for="denseStarBrightness">表面亮度倍率</label><input id="denseStarBrightness" data-parameter="denseStarBrightness" type="number" step="0.1" />
+            <label for="denseStarBlackbodyIntensityExponent">表面温度 → 亮度指数</label><input id="denseStarBlackbodyIntensityExponent" data-parameter="denseStarBlackbodyIntensityExponent" type="number" step="0.1" />
+            <label for="denseStarRedshiftColorExponent">表面频移 → 温度指数</label><input id="denseStarRedshiftColorExponent" data-parameter="denseStarRedshiftColorExponent" type="number" step="0.1" />
+            <label for="denseStarRedshiftIntensityExponent">表面频移 → 亮度指数</label><input id="denseStarRedshiftIntensityExponent" data-parameter="denseStarRedshiftIntensityExponent" type="number" step="0.1" />
+          </div>
+          <p class="note">勾选后将半径设为 2 Rs 可观察表面；0 表示无表面。有视界时半径须大于外视界，裸奇点允许任意非零半径。当前场景只追踪正 r 区域，负半径表面需后续最大延拓。原模型以 6000 K 叠加噪声温度，自转随时间倍率演化；表面遮挡其后的天空、盘与喷流。原诊断 5 显示表面棋盘格。</p>
         </details>
         <details class="post-controls" open>
           <summary>四维观者控制</summary>

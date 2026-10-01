@@ -3,6 +3,12 @@ import { radiusLightYears } from '../renderer/temporal.ts';
 export type DebugView = 0 | 1 | 2 | 3 | 4 | 5;
 
 export interface Parameters {
+  denseStarEnabled: boolean;
+  denseStarRadius: number;
+  denseStarBlackbodyIntensityExponent: number;
+  denseStarRedshiftColorExponent: number;
+  denseStarRedshiftIntensityExponent: number;
+  denseStarBrightness: number;
   diskEnabled: boolean;
   jetEnabled: boolean;
   diskInnerRadius: number;
@@ -63,6 +69,9 @@ export interface Parameters {
 export const DEFAULT_PARAMETERS: Readonly<Parameters> = Object.freeze({
   // Native Application.cpp startup configuration: inner > outer and rate below
   // the jet visibility threshold. Preserve these values and the existing sky.
+  denseStarEnabled: false, denseStarRadius: 0,
+  denseStarBlackbodyIntensityExponent: 4, denseStarRedshiftColorExponent: 1,
+  denseStarRedshiftIntensityExponent: 4, denseStarBrightness: 1,
   diskEnabled: false, jetEnabled: false,
   diskInnerRadius: 200, diskOuterRadius: 25, diskThickness: 0.75, diskHopper: 0.4,
   matterMu: 1, accretionRate: 1e-12, diskBrightness: 1, diskOpacity: 0.5,
@@ -89,6 +98,9 @@ export const DEFAULT_PARAMETERS: Readonly<Parameters> = Object.freeze({
 // Native throttle controls have no fixed caps. Zero endpoints for mass,
 // quality and FOV are excluded below; Web-only display controls retain their ranges.
 export const PARAMETER_LIMITS = {
+  denseStarRadius: [-Infinity, Infinity],
+  denseStarBlackbodyIntensityExponent: [0, Infinity], denseStarRedshiftColorExponent: [0, Infinity],
+  denseStarRedshiftIntensityExponent: [0, Infinity], denseStarBrightness: [0, Infinity],
   diskInnerRadius: [0, Infinity], diskOuterRadius: [0, Infinity],
   diskThickness: [0, Infinity], diskHopper: [0, Infinity],
   matterMu: [0, Infinity], accretionRate: [0, Infinity],

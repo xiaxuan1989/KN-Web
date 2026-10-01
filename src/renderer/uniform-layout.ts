@@ -4,7 +4,7 @@ import { radiusLightYears } from './temporal.ts';
 import type { Parameters } from '../physics/parameters.ts';
 
 // Byte sizes and float-word offsets are documented in docs/uniform-layout.md.
-export const UNIFORM_SIZES = [32, 48, 144, 96] as const;
+export const UNIFORM_SIZES = [32, 48, 144, 128] as const;
 
 export interface FrameData {
   width: number;
@@ -29,7 +29,7 @@ export class UniformData {
   readonly game = new Float32Array(8);
   readonly gameIntegers = new Uint32Array(this.game.buffer);
   readonly blackHole = new Float32Array(12);
-  readonly emission = new Float32Array(24);
+  readonly emission = new Float32Array(32);
   readonly camera = new Float32Array(36);
 
   update(frame: FrameData, parameters: Parameters, camera: CameraBasis): void {
@@ -46,6 +46,9 @@ export class UniformData {
       parameters.redshiftIntensityExponent, parameters.photonRingBoost, parameters.photonRingTemperatureBoost, parameters.boostRotation,
       parameters.jetRedshiftIntensityExponent, parameters.jetBrightness, parameters.jetSaturation, parameters.jetShiftMax,
       Number(parameters.diskEnabled), Number(parameters.jetEnabled), 0, 0,
+      parameters.denseStarRadius, parameters.denseStarBlackbodyIntensityExponent,
+      parameters.denseStarRedshiftColorExponent, parameters.denseStarRedshiftIntensityExponent,
+      parameters.denseStarBrightness, Number(parameters.denseStarEnabled), 0, 0,
     ]);
     this.camera.fill(0);
     this.camera.set([...camera.position, 0, ...camera.forward, 0, ...camera.right, frame.jitter?.[0] ?? 0, ...camera.up, frame.jitter?.[1] ?? 0]);

@@ -1,4 +1,4 @@
-@group(1) @binding(0) var<storage, read_write> result: array<vec4<f32>, 20>;
+@group(1) @binding(0) var<storage, read_write> result: array<vec4<f32>, 22>;
 
 // Read named WGSL fields, not a raw GPU buffer copy. This checks the ABI.
 @compute @workgroup_size(1)
@@ -23,4 +23,6 @@ fn verify_uniforms() {
     result[17] = emission.effects;
     result[18] = emission.jet;
     result[19] = emission.control;
+    result[20] = emission.starSurface;
+    result[21] = emission.starControl;
 }

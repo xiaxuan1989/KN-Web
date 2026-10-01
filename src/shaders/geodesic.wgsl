@@ -1,4 +1,4 @@
-// Positive-r, disk / jet NPGS TraceRay slice, observer modes -1/0/1/2/3 and spatial grids.
+// Positive-r, disk / jet / dense-star NPGS TraceRay slice, observer modes -1/0/1/2/3 and spatial grids.
 // Signed-sheet crossings remain outside this scene.
 const TRACE_BOUNDARY: f32 = 501.0;
 // Native 0 = Absorbed/Lost: includes horizon stops, exhausted budget and bound rays.
@@ -45,17 +45,19 @@ fn TraceStepBudget(spin: f32, charge: f32, quality: f32) -> u32 {
 
 struct ObserverTetrad { U: vec4<f32>, e1: vec4<f32>, e2: vec4<f32>, e3: vec4<f32>, outgoing: bool };
 
-fn TraceEmissionRay(origin: vec3<f32>, direction: vec3<f32>, spin: f32, charge: f32, quality: f32, mode: i32, velocity: vec3<f32>, frame: ObserverTetrad, gridMode: i32, gridTime: f32, debug: i32, settings: RadiationSettings, massSolar: f32, rayUv: vec2<f32>, renderTime: f32) -> TraceResult {
+fn TraceSceneRay(origin: vec3<f32>, direction: vec3<f32>, spin: f32, charge: f32, quality: f32, mode: i32, velocity: vec3<f32>, frame: ObserverTetrad, gridMode: i32, gridTime: f32, debug: i32, settings: RadiationSettings, massSolar: f32, rayUv: vec2<f32>, renderTime: f32, star: DenseStarSettings) -> TraceResult {
     var result = TraceResult(vec3<f32>(0.0), TRACE_STOPPED, 0u, 0.0, vec4<f32>(0), 1.0);
+    let starR = select(0.0,DenseStarRadius(star),RADIATION_ENABLED);
     let emitting = RADIATION_ENABLED && (HasDisk(settings) || HasJet(settings));
     var boundary = max(TRACE_BOUNDARY,spin*2.0);
-    if (emitting) { boundary = max(boundary,settings.geometry.y+1.0); }
+    if (emitting || starR != 0.0) { boundary = max(boundary,settings.geometry.y+1.0); }
     let a = spin*CONST_M;
     let Q = charge*CONST_M;
     let discriminant = 0.25-a*a-Q*Q;
     let naked = discriminant < 0.0;
     let outer = 0.5+sqrt(max(0.0,discriminant));
     let inner = 0.5-sqrt(max(0.0,discriminant));
+    let hasSurface = starR != 0.0 && (naked || starR > outer);
     var state = State(vec4<f32>(origin, 0.0), vec4<f32>(0.0));
     if (length(origin) > boundary) {
         let b = dot(origin, direction);
@@ -169,7 +171,8 @@ fn TraceEmissionRay(origin: vec3<f32>, direction: vec3<f32>, spin: f32, charge: 
         if (crossedInnerOutward) { preCeiling = inner+0.2; }
         if (crossedOuterOutward) { preCeiling = outer+0.2; }
         var pruningCeiling = min(preCeiling,shellLimit);
-        if (emitting) { pruningCeiling = min(pruningCeiling,settings.geometry.x); }
+        if (emitting || starR != 0.0) { pruningCeiling = min(pruningCeiling,settings.geometry.x); }
+        if (starR != 0.0) { pruningCeiling = min(pruningCeiling,starR); }
         // Native iGrid disables near-horizon pruning so grid segments can emit.
         if (gridMode == 0 && !naked && geo.r < pruningCeiling && currentDr > 1e-4) {
             if (debug == 1) { result.accumulated += vec4<f32>(0,0,0.3,0); }
@@ -236,6 +239,10 @@ fn TraceEmissionRay(origin: vec3<f32>, direction: vec3<f32>, spin: f32, charge: 
             result.accumulated = AccumulateRadiation(result.accumulated,state,previous,E,a,Q,
                 outgoing,thetaInShell,&rayMarchPhase,thermodynamics,gridTime,renderTime,settings);
         }
+        if (hasSurface) {
+            result.accumulated = DenseStarColor(result.accumulated,state,previous,a,Q,outgoing,
+                1.0,-dLambda/quality,gridTime,debug,star);
+        }
         // Original post-step horizon checks also stop inward motion between
         // horizons and rays returning after escaping an inner starting region.
         let horizonStop = !naked && ((lastR > outer && geo.r < outer) || (lastR > inner && geo.r < inner) ||
@@ -251,6 +258,11 @@ fn TraceEmissionRay(origin: vec3<f32>, direction: vec3<f32>, spin: f32, charge: 
         if (!naked && termination != -1.0 && geo.r < termination) { return result; }
     }
     return result;
+}
+
+fn TraceEmissionRay(origin: vec3<f32>, direction: vec3<f32>, spin: f32, charge: f32, quality: f32, mode: i32, velocity: vec3<f32>, frame: ObserverTetrad, gridMode: i32, gridTime: f32, debug: i32, settings: RadiationSettings, massSolar: f32, rayUv: vec2<f32>, renderTime: f32) -> TraceResult {
+    return TraceSceneRay(origin,direction,spin,charge,quality,mode,velocity,frame,gridMode,gridTime,debug,
+        settings,massSolar,rayUv,renderTime,DenseStarSettings());
 }
 
 fn TraceDiagnosticRay(origin: vec3<f32>, direction: vec3<f32>, spin: f32, charge: f32, quality: f32, mode: i32, velocity: vec3<f32>, frame: ObserverTetrad, gridMode: i32, gridTime: f32, debug: i32) -> TraceResult {
