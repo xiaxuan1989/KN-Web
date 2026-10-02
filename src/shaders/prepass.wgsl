@@ -20,7 +20,7 @@ fn TraceScreen(uv: vec2<f32>) -> TraceResult {
     }
     let frame = ObserverTetrad(camera.observerU,camera.observerE1,camera.observerE2,camera.observerE3,camera.velocity.w > 0.5);
     var debug = 0;
-    if (DIAGNOSTICS_ENABLED) { debug = select(i32(blackHole.nativeDebug),3,game.debugView == 4u); }
+    if (DIAGNOSTICS_ENABLED) { debug = select(i32(DiagnosticMode()),3,game.debugView == 4u); }
     let settings = RadiationSettings(emission.geometry,emission.material,emission.color,emission.effects,emission.jet,emission.control);
     let star = DenseStarSettings(emission.starSurface,emission.starControl);
     var ray: TraceResult;
@@ -32,7 +32,7 @@ fn TraceScreen(uv: vec2<f32>) -> TraceResult {
     return PackDiagnostic(ray,debug,select(TraceMaxStep(blackHole.spin,blackHole.charge),TraceExtendedMaxStep(blackHole.spin,blackHole.charge),MaximalExtensionEnabled()),blackHole.backShiftMax);
 }
 fn EncodeTrace(ray: TraceResult) -> PrepassOutput {
-    let debug = select(i32(blackHole.nativeDebug),3,game.debugView == 4u);
+    let debug = select(i32(DiagnosticMode()),3,game.debugView == 4u);
     let energyFlag = select(0.0,0.2,ray.energy < 0.0 && (!MaximalExtensionEnabled() || (debug != 3 && !(debug == 4 && ray.status == TRACE_OPAQUE))));
     if (IsSkyStatus(ray.status)) {
         let shift = BackgroundFrequencyShift(ray.energy,blackHole.backShiftMax);
@@ -128,7 +128,7 @@ fn fs_composite(input: VertexOutput) -> @location(0) vec4<f32> {
     if (DIAGNOSTICS_ENABLED) {
         let view = FragUvToDir(textureUv,tan(game.fovRadians*0.5),game.resolution);
         let magnification = DebugMagnification(dpdx(direction),dpdy(direction),dpdx(view),dpdy(view));
-        if (blackHole.nativeDebug == 6.0 && textureUv.y > 0.5) {
+        if (DiagnosticMode() == 6.0 && textureUv.y > 0.5) {
             sky = vec4<f32>(sky.rgb*magnification,sky.a);
         }
     }

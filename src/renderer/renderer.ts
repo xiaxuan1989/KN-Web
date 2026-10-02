@@ -276,7 +276,8 @@ export class Renderer {
     this.scene!.encode(encoder,this.post!.scene.createView(),this.uniforms!.bindGroup,this.prepassUniforms!.bindGroup,
       this.background!.bindGroup(this.parameters.background),this.usePrepass,(this.parameters.debugView === 3 || this.parameters.debugView === 4),this.parameters.spatialGrid,
       this.parameters.nativeDebug !== 0 || this.parameters.debugView === 4,
-      this.parameters.diskEnabled || this.parameters.jetEnabled || this.parameters.denseStarEnabled,this.parameters.maximalExtension,this.parameters.specializeExtension);
+      this.parameters.diskEnabled || this.parameters.jetEnabled || this.parameters.denseStarEnabled,this.parameters.maximalExtension,this.parameters.specializeExtension,
+      this.parameters.debugView === 4 ? 3 : this.parameters.nativeDebug,this.parameters.specializeDiagnostics);
     this.post!.encode(encoder, this.context!.getCurrentTexture().createView(), this.parameters, this.temporalFrame.weight, this.postActive);
     device.queue.submit([encoder.finish()]);
   }

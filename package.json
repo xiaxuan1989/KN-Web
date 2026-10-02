@@ -32,7 +32,8 @@
     "test:dense-star-render": "npm run test:emission-render",
     "test:extension": "node tools/prepare-extension-observer.mjs && python3 tools/check-extension-observer.py && node tools/prepare-extension-host.mjs && python3 tools/check-extension-host.py && python3 tools/prepare-extension-trace-check.py && cargo run --locked --manifest-path tools/physics-check/Cargo.toml --bin extension-trace-check",
     "test:extension-render": "npm run test:emission-render && python3 tools/summarize-extension-render.py",
-    "test:extension-specialization": "npm run test:extension-render && python3 tools/check-extension-specialization.py"
+    "test:extension-specialization": "npm run test:extension-render && python3 tools/check-extension-specialization.py",
+    "test:diagnostic-specialization": "python3 tools/prepare-diagnostic-profile.py && npm run test:extension-render && node tools/prepare-diagnostic-check.mjs && python3 tools/check-diagnostic-specialization.py && python3 tools/summarize-prepass-sampling.py && cargo run --locked --manifest-path tools/physics-check/Cargo.toml --bin uniform-check"
   },
   "devDependencies": {
     "@webgpu/types": "0.1.74",

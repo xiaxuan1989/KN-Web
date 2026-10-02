@@ -24,7 +24,7 @@ npm run dev
 支持条件及实测边界见 [浏览器兼容说明](docs/browser-compatibility.md)。
 
 ```sh
-npm test             # 106 项 CPU 测试：相机、输入、uniform、渲染循环、FPS 与资源清理
+npm test             # 107 项 CPU 测试：相机、输入、uniform、渲染循环、FPS 与资源清理
 npm run build        # TypeScript 检查 + Vite 静态构建
 npm run preview      # http://127.0.0.1:4173/
 npm run test:physics # GLSL / WGSL 实际 GPU 对照 + 网格离屏绘制
@@ -47,6 +47,7 @@ npm run test:dense-star # 960 组原表面 / 噪声函数 + 盘 / 喷流与完�
 npm run test:extension # 原 signed 完整追踪、四维轨迹及跨帧宿主对照
 npm run test:extension-render # 六组原背景采样、44 组扩展场景及旧绘制回归
 npm run test:extension-specialization # 编译变体与动态分支的 139 场景逐附件对照
+npm run test:diagnostic-specialization # 183 场景诊断加速 / 动态参考逐附件对照
 npm run test:dense-star-render # 生产全 / 半绘制、原采样与 92-word uniform 回读
 ```
 
@@ -66,6 +67,7 @@ npm run test:dense-star-render # 生产全 / 半绘制、原采样与 92-word un
 - 默认物理参数为质量 1490 万 M☉、自旋 0.998、电荷 0、水平 FOV 80°。鼠标灵敏度 0.2°/单位；自由速度初始 2.5 光年/秒，可用滚轮调整。
 - 参数框调整质量 M / M☉、无量纲 a* / Q*、quality 与输出尺寸模式。
 - 默认开启「跟随窗口尺寸」，输出及相机宽高比随窗口变化；关闭后可用「固定宽度 / 高度」指定像素数。预计算每轴取输出的一半并向下取整（至少 1 px）。关闭「半分辨率预计算」可对照全分辨率逐像素追踪。原诊断也遵循同一预计算 / 合成流程；UV、相机网格、参数颜色等 Web 辅助视图直接全尺寸绘制。
+- 默认开启「诊断渲染加速」：最大延拓关闭且使用预计算时，加速诊断 3；盘、喷流、致密星也关闭时，加速诊断 6 的预计算。其余情况保留参考路径；可关闭开关进行对照。见 [诊断加速验证](docs/diagnostic-mode-performance.md)。
 - 「KN 引力透镜」显示追踪后的星空；「背景」可切换方向网格；「原背景」显示无引力对照；「原诊断模式」可选终止原因、初始动量、步数、频移和半屏放大率；诊断 5 显示启用表面的棋盘格。
 - quality 可直接输入 10 或更高，FOV 支持 0° 与 180° 之间的值；自旋 / 电荷支持超极限。频移上限范围 1–10000，观者 q/m 为 −2–2；数值及 Web 边界见 [诊断与参数范围](docs/diagnostics-alignment.md)。
 - 「空间网格」：默认关闭；模式 1 使用局部频移计算黑体颜色，模式 2 使用青 / 绿 / 红固定颜色。网格位于真实空间曲面，沿光线累计遮挡，与「背景 → 方向网格」独立。时间倍率控制网格旋转；四维模式使用轨迹 KS 坐标时。
@@ -85,7 +87,7 @@ npm run test:dense-star-render # 生产全 / 半绘制、原采样与 92-word un
 
 ## 验证现状
 
-- 106 项 CPU 测试、TypeScript 和生产构建通过，覆盖轨道 / 摆头、T 切换、自由平移 / 滚转、惯性衰减、平滑回正，以及滚轮距离倍率 / 平滑、朝向保持、自由移动速度、生命周期清理与画布格式；包含 FPS 统计、GPU 等待和暂停恢复的 8 项回归。
+- 107 项 CPU 测试、TypeScript 和生产构建通过，覆盖轨道 / 摆头、T 切换、自由平移 / 滚转、惯性衰减、平滑回正，以及滚轮距离倍率 / 平滑、朝向保持、自由移动速度、生命周期清理与画布格式；包含 FPS 统计、GPU 等待和暂停恢复的 8 项回归。
 - Apple M3 Pro / Metal：23 组GLSL vs WGSL 数值对照、31 条完整追踪探针、108 个六面朝向 / 颜色 / mip 探针、14 张完整管线离屏图通过。
 - 自旋反转的阴影逐像素镜像；固定 a*=0.8 加电荷后阴影缩小；近临界光线展示绕转行为。
 - 20 组后处理图、154 帧原生 GPU 回放通过；TAA 混合 / 重置、HDR 数值、Bloom、曝光、Gamma 与方向校验见 [Phase 6 报告](docs/phase6-post.md)。

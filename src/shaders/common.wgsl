@@ -61,3 +61,11 @@ fn MaximalExtensionEnabled() -> bool {
     if (MAXIMAL_EXTENSION_MODE == 0) { return false; }
     return blackHole.extension.x > 0.5;
 }
+
+// -1 retains the original dynamic diagnostic path. Host variants specialize
+// only the validated prepass/composite configurations (see ScenePasses).
+override DIAGNOSTIC_MODE: i32 = -1;
+fn DiagnosticMode() -> f32 {
+    if (DIAGNOSTIC_MODE >= 0) { return f32(DIAGNOSTIC_MODE); }
+    return blackHole.nativeDebug;
+}

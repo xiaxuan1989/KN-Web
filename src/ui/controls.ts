@@ -70,7 +70,7 @@ export function bindControls(parameters: Parameters, actions: { boost?: (directi
     }
   };
   syncSizeControls();
-  for (const key of ['maximalExtension', 'specializeExtension', 'denseStarEnabled', 'diskEnabled', 'jetEnabled', 'manualVelocity', 'fitWindow', 'prepass', 'frequencyShift', 'postProcessing', 'taa', 'bloom'] as const) {
+  for (const key of ['maximalExtension', 'specializeExtension', 'specializeDiagnostics', 'denseStarEnabled', 'diskEnabled', 'jetEnabled', 'manualVelocity', 'fitWindow', 'prepass', 'frequencyShift', 'postProcessing', 'taa', 'bloom'] as const) {
     const input = document.querySelector<HTMLInputElement>(`[data-toggle="${key}"]`)!;
     input.checked = parameters[key];
     input.addEventListener('change', () => {

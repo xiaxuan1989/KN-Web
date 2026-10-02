@@ -5,6 +5,7 @@ export type DebugView = 0 | 1 | 2 | 3 | 4 | 5;
 export interface Parameters {
   maximalExtension: boolean;
   specializeExtension: boolean;
+  specializeDiagnostics: boolean;
   universeSign: 1 | -1;
   universeIndex: 0 | 1 | 2;
   denseStarEnabled: boolean;
@@ -73,7 +74,7 @@ export interface Parameters {
 export const DEFAULT_PARAMETERS: Readonly<Parameters> = Object.freeze({
   // Native Application.cpp startup configuration: inner > outer and rate below
   // the jet visibility threshold. Preserve these values and the existing sky.
-  maximalExtension: false, specializeExtension: true, universeSign: 1, universeIndex: 0,
+  maximalExtension: false, specializeExtension: true, specializeDiagnostics: true, universeSign: 1, universeIndex: 0,
   denseStarEnabled: false, denseStarRadius: 0,
   denseStarBlackbodyIntensityExponent: 4, denseStarRedshiftColorExponent: 1,
   denseStarRedshiftIntensityExponent: 4, denseStarBrightness: 1,
